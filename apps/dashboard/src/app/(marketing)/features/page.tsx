@@ -6,6 +6,12 @@ import {
   Code,
   BarChart3,
   ArrowRight,
+  Server,
+  Lock,
+  Repeat,
+  Bell,
+  Database,
+  Key,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -16,13 +22,13 @@ const features = [
     title: "Non-Custodial Architecture",
     description:
       "We never hold your private keys or funds. Every payment flows directly to your wallet via HD key derivation. You maintain complete sovereignty over your assets.",
+    span: "md:col-span-2",
   },
   {
     icon: Wallet,
     title: "HD Wallet Derivation",
     description:
       "Generate a unique deposit address for every invoice using BIP-32/BIP-44 hierarchical deterministic key derivation. No address reuse, maximum privacy.",
-    span: "md:col-span-2",
   },
   {
     icon: Zap,
@@ -51,13 +57,53 @@ const features = [
   },
 ];
 
+const securityFeatures = [
+  {
+    icon: Lock,
+    title: "HMAC-SHA256 Webhooks",
+    description:
+      "Every webhook is cryptographically signed. Verify authenticity before processing any event.",
+  },
+  {
+    icon: Key,
+    title: "API Key Rotation",
+    description:
+      "Rotate API keys and webhook secrets without downtime. Previous keys remain valid during transition.",
+  },
+  {
+    icon: Repeat,
+    title: "Automatic Retries",
+    description:
+      "Failed webhook deliveries are retried with exponential backoff. Track every attempt in delivery logs.",
+  },
+  {
+    icon: Database,
+    title: "IP Allowlisting",
+    description:
+      "Restrict API access to specific IP addresses or CIDR ranges. Protect your merchant account.",
+  },
+  {
+    icon: Bell,
+    title: "2FA Protection",
+    description:
+      "TOTP-based two-factor authentication for dashboard access. Backup codes for account recovery.",
+  },
+  {
+    icon: Server,
+    title: "Self-Hosted",
+    description:
+      "Run on your own infrastructure. Full data sovereignty, no third-party access to your payment data.",
+  },
+];
+
 export default function FeaturesPage() {
   return (
     <div className="bg-[#050505] pt-16">
+      {/* Hero */}
       <section className="py-24">
         <div className="mx-auto max-w-7xl px-6">
           <div className="mb-16 text-center">
-            <h1 className="text-4xl font-bold tracking-tight text-white">
+            <h1 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
               Everything you need to scale
             </h1>
             <p className="mt-4 text-lg text-zinc-500">
@@ -84,17 +130,70 @@ export default function FeaturesPage() {
               </div>
             ))}
           </div>
+        </div>
+      </section>
 
-          <div className="mt-16 text-center">
+      {/* Security */}
+      <section className="border-t border-white/5 py-24">
+        <div className="mx-auto max-w-7xl px-6">
+          <div className="mb-16 text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-white">
+              Security built in
+            </h2>
+            <p className="mt-4 text-zinc-500">
+              Every layer designed to protect your funds and data.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {securityFeatures.map((feature, i) => (
+              <div
+                key={feature.title}
+                className="animate-in fade-in slide-in-from-bottom-4 group rounded-2xl border border-white/5 bg-white/[0.02] p-6 transition-all duration-700 hover:border-white/10 hover:bg-white/[0.04]"
+                style={{ animationDelay: `${i * 100}ms` }}
+              >
+                <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+                  <feature.icon className="h-5 w-5 text-zinc-400 transition-colors group-hover:text-white" />
+                </div>
+                <h3 className="mb-2 text-base font-semibold text-white">
+                  {feature.title}
+                </h3>
+                <p className="text-sm leading-relaxed text-zinc-500">
+                  {feature.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA */}
+      <section className="border-t border-white/5 py-24">
+        <div className="mx-auto max-w-3xl px-6 text-center">
+          <h2 className="text-3xl font-bold tracking-tight text-white">
+            Ready to build?
+          </h2>
+          <p className="mt-4 text-zinc-500">
+            Start accepting crypto payments in minutes.
+          </p>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
             <Button
               size="lg"
-              className="h-10 rounded-md bg-white px-8 font-bold text-black shadow-[0_0_30px_rgba(255,255,255,0.1)] transition-all hover:bg-zinc-200"
+              className="h-11 rounded-md bg-white px-8 font-bold text-black transition-all hover:bg-zinc-200"
               asChild
             >
               <Link href="/dashboard">
-                Start Building
+                Get Started Free
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              className="h-11 rounded-md border-white/10 bg-white/5 text-white transition-all hover:bg-white/10"
+              asChild
+            >
+              <Link href="/docs">Read the docs</Link>
             </Button>
           </div>
         </div>

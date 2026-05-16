@@ -239,18 +239,6 @@ docker compose down             # Stop all
 
 ---
 
-## 💰 Pricing
-
-| Plan             | Fee   | Monthly | Support          |
-| ---------------- | ----- | ------- | ---------------- |
-| **Starter**      | 1.0%  | $0      | Community        |
-| **Professional** | 0.5%  | $39     | Email (1-2 days) |
-| **Enterprise**   | 0.25% | $149    | Priority + Call  |
-
-No hidden fees. No spreads. Merchants receive 100% of invoice value.
-
----
-
 ## 🏗️ Architecture
 
 ```
