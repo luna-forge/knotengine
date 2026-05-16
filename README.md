@@ -279,7 +279,3 @@ Open a PR to `main`. CI runs lint, tests, and Docker build automatically.
 [AGPL-3.0](LICENSE) — Free to use, modify, and self-host.
 
 ---
-
-<p align="center">
-  Built with ❤️ by the KnotEngine community
-</p>
