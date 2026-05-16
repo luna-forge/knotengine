@@ -23,12 +23,11 @@ pnpm install
 # 3. Set up environment
 cp .env.example .env
 
-# 4. Start infrastructure
-pnpm docker:up
-
-# 5. Start all services
-pnpm dev
+# 4. Start everything (Docker + Apps)
+pnpm start
 ```
+
+Press `Ctrl+C` to stop apps, then run `pnpm docker:down` to stop infrastructure.
 
 ### Running Services Individually
 

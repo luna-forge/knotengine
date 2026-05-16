@@ -10,6 +10,7 @@
   },
   "license": "AGPL-3.0",
   "scripts": {
+    "start": "bash scripts/start-all.sh",
     "dev": "turbo run dev",
     "version:sync": "tsx scripts/sync-versions.ts",
     "dev:api": "turbo run dev --filter api",
