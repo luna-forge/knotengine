@@ -1,10 +1,4 @@
-import {
-  Merchant,
-  User,
-  IMerchant,
-  IUser,
-  mongoose,
-} from "@qodinger/knot-database";
+import { Organization, IOrganization } from "@qodinger/knot-database";
 import { NotificationService } from "../infra/notification-service.js";
 
 /**
@@ -24,7 +18,7 @@ export class SubscriptionBilling {
   }
 
   /**
-   * Process monthly subscription billing for all merchants
+   * Process monthly subscription billing for all organizations
    */
   public async processMonthlyBilling(): Promise<{
     processed: number;
@@ -44,19 +38,19 @@ export class SubscriptionBilling {
     console.log("🔄 Starting monthly subscription billing...");
 
     try {
-      // Get all merchants on paid plans
-      const paidMerchants = await Merchant.find({
+      // Get all organizations on paid plans
+      const paidOrgs = await Organization.find({
         plan: { $in: ["professional", "enterprise"] },
-        isActive: true,
-      }).populate("userId");
+        deletedAt: { $exists: false },
+      });
 
-      console.log(`📊 Found ${paidMerchants.length} merchants on paid plans`);
+      console.log(`📊 Found ${paidOrgs.length} organizations on paid plans`);
 
-      for (const merchant of paidMerchants) {
+      for (const org of paidOrgs) {
         results.processed++;
 
         try {
-          const billingResult = await this.processMerchantBilling(merchant);
+          const billingResult = await this.processOrgBilling(org);
 
           if (billingResult.success) {
             results.successful++;
@@ -73,7 +67,7 @@ export class SubscriptionBilling {
           await new Promise((resolve) => setTimeout(resolve, 100));
         } catch (error) {
           console.error(
-            "❌ Billing failed for merchant ${merchant.merchantId}:",
+            `❌ Billing failed for org ${org.organizationId}:`,
             error,
           );
           results.failed++;
@@ -96,11 +90,9 @@ export class SubscriptionBilling {
   }
 
   /**
-   * Process billing for a single merchant
+   * Process billing for a single organization
    */
-  private async processMerchantBilling(
-    merchant: IMerchant & { userId?: IUser | mongoose.Types.ObjectId },
-  ): Promise<{
+  private async processOrgBilling(org: IOrganization): Promise<{
     success: boolean;
     charged: number;
     downgraded: boolean;
@@ -112,35 +104,25 @@ export class SubscriptionBilling {
       enterprise: 149,
     };
 
-    const plan = merchant.plan as "professional" | "enterprise";
+    const plan = org.plan as "professional" | "enterprise";
     const cost = planCosts[plan];
-    const user = merchant.userId;
 
-    // Helper function to check if userId is populated as IUser
-    const isPopulatedUser = (
-      userId: IUser | mongoose.Types.ObjectId | undefined,
-    ): userId is IUser => {
-      return (
-        userId !== undefined && !(userId instanceof mongoose.Types.ObjectId)
-      );
-    };
-
-    // Check if user exists and is populated
-    if (!user || !isPopulatedUser(user) || user.creditBalance < cost) {
+    // Check if org has sufficient balance
+    if (org.creditBalance < cost) {
       console.log(
-        "💸 Insufficient balance for ${merchant.merchantId} (${plan}) - checking grace period",
+        `💸 Insufficient balance for ${org.organizationId} (${plan}) - checking grace period`,
       );
 
       // Check if already in grace period
       const gracePeriodDays = 7; // 7 days grace period
 
       // First time insufficient balance - start grace period and send warning
-      if (!merchant.gracePeriodStarted) {
+      if (!org.gracePeriodStarted) {
         console.log(
-          "⏰ Starting grace period for ${merchant.merchantId} - ${gracePeriodDays} days until downgrade",
+          `⏰ Starting grace period for ${org.organizationId} - ${gracePeriodDays} days until downgrade`,
         );
 
-        await Merchant.findByIdAndUpdate(merchant._id, {
+        await Organization.findByIdAndUpdate(org._id, {
           $set: {
             gracePeriodStarted: new Date(),
             gracePeriodEnds: new Date(
@@ -149,9 +131,9 @@ export class SubscriptionBilling {
           },
         });
 
-        // Send initial warning
-        await NotificationService.create({
-          merchantId: merchant._id.toString(),
+        // Send initial warning to all org members
+        await NotificationService.createOrgNotification({
+          organizationId: org._id.toString(),
           title: "Payment Required - Grace Period Started",
           description: `Insufficient balance for ${plan} plan. You have ${gracePeriodDays} days to top up before automatic downgrade to Starter plan.`,
           type: "warning",
@@ -167,20 +149,20 @@ export class SubscriptionBilling {
       }
 
       // Check if grace period has expired
-      const gracePeriodEnds = merchant.gracePeriodEnds;
+      const gracePeriodEnds = org.gracePeriodEnds;
       if (gracePeriodEnds && new Date() < gracePeriodEnds) {
         const daysRemaining = Math.ceil(
           (gracePeriodEnds.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
         );
 
         console.log(
-          "⏳ Grace period active for ${merchant.merchantId} - ${daysRemaining} days remaining",
+          `⏳ Grace period active for ${org.organizationId} - ${daysRemaining} days remaining`,
         );
 
         // Send reminder if 3 days or less remaining
         if (daysRemaining <= 3) {
-          await NotificationService.create({
-            merchantId: merchant._id.toString(),
+          await NotificationService.createOrgNotification({
+            organizationId: org._id.toString(),
             title: `Payment Required - ${daysRemaining} days remaining`,
             description: `Your ${plan} plan will be downgraded to Starter in ${daysRemaining} day${daysRemaining === 1 ? "" : "s"} due to insufficient balance.`,
             type: "warning",
@@ -199,10 +181,10 @@ export class SubscriptionBilling {
 
       // Grace period expired - downgrade now
       console.log(
-        "⏰ Grace period expired for ${merchant.merchantId} - downgrading to starter",
+        `⏰ Grace period expired for ${org.organizationId} - downgrading to starter`,
       );
 
-      await Merchant.findByIdAndUpdate(merchant._id, {
+      await Organization.findByIdAndUpdate(org._id, {
         $set: {
           plan: "starter",
           planStartedAt: new Date(),
@@ -212,8 +194,8 @@ export class SubscriptionBilling {
       });
 
       // Send final notification
-      await NotificationService.create({
-        merchantId: merchant._id.toString(),
+      await NotificationService.createOrgNotification({
+        organizationId: org._id.toString(),
         title: "Plan Downgraded - Grace Period Expired",
         description: `Grace period expired. Downgraded to Starter plan due to insufficient balance. Top up to upgrade again.`,
         type: "error",
@@ -229,18 +211,14 @@ export class SubscriptionBilling {
     }
 
     // Charge the subscription fee
-    await User.findByIdAndUpdate(user._id, {
+    await Organization.findByIdAndUpdate(org._id, {
       $inc: { creditBalance: -cost },
-    });
-
-    // Update merchant's plan start date
-    await Merchant.findByIdAndUpdate(merchant._id, {
       $set: { planStartedAt: new Date() },
     });
 
     // Send success notification
-    await NotificationService.create({
-      merchantId: merchant._id.toString(),
+    await NotificationService.createOrgNotification({
+      organizationId: org._id.toString(),
       title: "Subscription Renewed",
       description: `Your ${plan} plan has been renewed for $${cost.toFixed(2)}.`,
       type: "success",
@@ -248,7 +226,7 @@ export class SubscriptionBilling {
     });
 
     console.log(
-      "💳 Charged ${merchant.merchantId} $${cost.toFixed(2)} for ${plan} plan",
+      `💳 Charged ${org.organizationId} $${cost.toFixed(2)} for ${plan} plan`,
     );
 
     return {
@@ -259,9 +237,9 @@ export class SubscriptionBilling {
   }
 
   /**
-   * Get billing status for a merchant
+   * Get billing status for an organization
    */
-  public async getMerchantBillingStatus(merchantId: string): Promise<{
+  public async getOrgBillingStatus(organizationId: string): Promise<{
     plan: string;
     planStartedAt: Date;
     nextBillingDate: Date;
@@ -270,10 +248,10 @@ export class SubscriptionBilling {
     isProratedThisMonth?: boolean;
     proratedAmount?: number;
   }> {
-    const merchant = await Merchant.findOne({ merchantId });
+    const org = await Organization.findById(organizationId);
 
-    if (!merchant) {
-      throw new Error("Merchant not found");
+    if (!org) {
+      throw new Error("Organization not found");
     }
 
     const planCosts = {
@@ -282,7 +260,7 @@ export class SubscriptionBilling {
       enterprise: 149,
     };
 
-    const planStartedAt = merchant.planStartedAt || new Date();
+    const planStartedAt = org.planStartedAt || new Date();
     const nextBillingDate = new Date();
     nextBillingDate.setDate(1); // Always bill on the 1st
     if (nextBillingDate <= new Date()) {
@@ -295,19 +273,19 @@ export class SubscriptionBilling {
 
     // Check if this month was prorated
     const isProratedThisMonth = !!(
-      merchant.lastProratedDate &&
-      merchant.lastProratedDate.getMonth() === new Date().getMonth() &&
-      merchant.lastProratedDate.getFullYear() === new Date().getFullYear()
+      org.lastProratedDate &&
+      org.lastProratedDate.getMonth() === new Date().getMonth() &&
+      org.lastProratedDate.getFullYear() === new Date().getFullYear()
     );
 
     return {
-      plan: merchant.plan,
+      plan: org.plan,
       planStartedAt,
       nextBillingDate,
-      monthlyCost: planCosts[merchant.plan as keyof typeof planCosts],
+      monthlyCost: planCosts[org.plan as keyof typeof planCosts],
       daysUntilBilling: Math.max(0, daysUntilBilling),
       isProratedThisMonth,
-      proratedAmount: merchant.lastProratedAmount || undefined,
+      proratedAmount: org.lastProratedAmount || undefined,
     };
   }
 

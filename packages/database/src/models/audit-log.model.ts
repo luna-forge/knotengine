@@ -7,6 +7,7 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IAuditLog extends Document {
   userId: mongoose.Types.ObjectId;
+  organizationId?: mongoose.Types.ObjectId;
   action: string;
   category: "auth" | "account" | "security" | "billing" | "settings";
   description: string;
@@ -24,6 +25,7 @@ const AuditLogSchema: Schema = new Schema(
       required: true,
       index: true,
     },
+    organizationId: { type: Schema.Types.ObjectId, ref: "Organization" },
     action: { type: String, required: true },
     category: {
       type: String,

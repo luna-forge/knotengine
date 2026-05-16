@@ -2,6 +2,7 @@ import {
   Invoice,
   IInvoice,
   Merchant,
+  Organization,
   WebhookDelivery,
 } from "@qodinger/knot-database";
 import { Derivator } from "@qodinger/knot-crypto";
@@ -40,9 +41,16 @@ export class WebhookDispatcher {
       return false;
     }
 
-    // Get merchant plan
+    // Get merchant plan via organization
     const merchant = await Merchant.findById(invoice.merchantId);
-    const merchantPlan = merchant?.plan || "starter";
+    let merchantPlan: "starter" | "professional" | "enterprise" = "starter";
+    if (merchant?.organizationId) {
+      const org = await Organization.findById(merchant.organizationId);
+      const plan = org?.plan;
+      if (plan === "professional" || plan === "enterprise") {
+        merchantPlan = plan;
+      }
+    }
 
     // Use queue if available for better scalability
     if (WebhookQueue.isReady()) {

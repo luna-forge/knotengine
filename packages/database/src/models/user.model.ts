@@ -9,22 +9,18 @@ import mongoose, { Schema, Document } from "mongoose";
 export interface IUser extends Document {
   oauthId: string;
   email?: string;
-  /** Email verification status */
   emailVerified: boolean;
-  /** Shared prepaid credit balance (USD) across all merchants */
   creditBalance: number;
-  /** Total yield accrued by this user's funds */
   yieldAccruedUsd: number;
   lastYieldSyncAt?: Date;
   welcomeBonusClaimed: boolean;
-  /** TOTP Two-Factor Authentication */
   twoFactorEnabled: boolean;
   twoFactorSecret?: string;
   twoFactorBackupCodes?: string[];
-  /** Referral System */
   referralCode?: string;
   referredBy?: mongoose.Types.ObjectId;
   referralEarningsUsd: number;
+  organizationId?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +40,7 @@ const UserSchema: Schema = new Schema(
     referralCode: { type: String, unique: true, sparse: true },
     referredBy: { type: Schema.Types.ObjectId, ref: "User" },
     referralEarningsUsd: { type: Number, default: 0 },
+    organizationId: { type: Schema.Types.ObjectId, ref: "Organization" },
   },
   { timestamps: true },
 );

@@ -1,5 +1,5 @@
 import { FastifyReply } from "fastify";
-import { Notification } from "@qodinger/knot-database";
+import { Notification, mongoose } from "@qodinger/knot-database";
 
 export const MerchantNotificationController = {
   getNotifications: async (request: any, _reply: FastifyReply) => {
@@ -42,16 +42,24 @@ export const MerchantNotificationController = {
 
     return { success: true };
   },
-  markNotificationRead: async (request: any, _reply: FastifyReply) => {
+  markNotificationRead: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return _reply.code(401).send({ error: "Unauthorized" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     const { id } = request.params;
 
-    await Notification.findOneAndUpdate(
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return reply.code(400).send({ error: "Invalid notification ID" });
+    }
+
+    const notification = await Notification.findOneAndUpdate(
       { _id: id, merchantId: merchant._id },
       { $set: { isRead: true } },
     );
+
+    if (!notification) {
+      return reply.code(404).send({ error: "Notification not found" });
+    }
 
     return { success: true };
   },

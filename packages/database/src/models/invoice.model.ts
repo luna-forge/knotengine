@@ -17,7 +17,7 @@ export type InvoiceStatus =
 
 export interface IInvoice extends Document {
   merchantId: mongoose.Types.ObjectId;
-  /** Human-readable invoice identifier (e.g. inv_abc123) */
+  organizationId?: mongoose.Types.ObjectId;
   invoiceId: string;
   amountUsd: number;
   cryptoAmount: number;
@@ -68,6 +68,7 @@ const InvoiceSchema: Schema = new Schema(
       ref: "Merchant",
       required: true,
     },
+    organizationId: { type: Schema.Types.ObjectId, ref: "Organization" },
     invoiceId: { type: String, required: true, unique: true },
     amountUsd: { type: Number, required: true },
     cryptoAmount: { type: Number, required: true },

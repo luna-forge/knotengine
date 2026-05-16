@@ -2,8 +2,11 @@ import type { NextConfig } from "next";
 import dotenv from "dotenv";
 import path from "path";
 
-// Load root .env for monorepo development
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+// Load .env.local for development (gitignored, contains secrets)
+const rootDir = path.resolve(__dirname, "../..");
+const envFile =
+  process.env.NODE_ENV === "production" ? ".env.production" : ".env.local";
+dotenv.config({ path: path.join(rootDir, envFile) });
 
 const nextConfig: NextConfig = {
   output: "standalone",

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -51,13 +52,31 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const headersList = await headers();
+  const customDomain = headersList.get("x-custom-domain");
+  const brandColor = headersList.get("x-org-brand-color") || "#ffffff";
+
   return (
     <html lang="en" className="dark">
+      <head>
+        {customDomain && (
+          <style
+            dangerouslySetInnerHTML={{
+              __html: `
+                :root {
+                  --brand-color: ${brandColor};
+                  --brand-color-muted: ${brandColor}20;
+                }
+              `,
+            }}
+          />
+        )}
+      </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

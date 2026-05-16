@@ -16,6 +16,8 @@ import { configRoutes } from "./routes/config.js";
 import { authRoutes } from "./routes/auth.js";
 import { uploadRoutes } from "./routes/upload.js";
 import { floatRoutes } from "./routes/float.js";
+import { organizationRoutes } from "./routes/organizations.js";
+import { domainRoutes } from "./routes/domains.js";
 import { PriceOracle } from "./infra/price-feed.js";
 import { ConfirmationEngine } from "./core/confirmation-engine.js";
 import { WebhookDispatcher } from "./infra/webhook-dispatcher.js";
@@ -38,30 +40,18 @@ import packageJson from "../package.json" with { type: "json" };
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment-specific .env file from monorepo root
-const envSuffix =
-  process.env.NODE_ENV === "production" ? "production" : "development";
-const envFileName = `.env.${envSuffix}`;
+// Load environment file from monorepo root
+const rootDir = path.resolve(__dirname, "../../..");
+const envFile =
+  process.env.NODE_ENV === "production" ? ".env.production" : ".env.local";
+const envPath = path.join(rootDir, envFile);
 
-const possibleEnvPaths = [
-  path.resolve(__dirname, `../../../${envFileName}`), // Monorepo root from built dist/
-  path.resolve(process.cwd(), envFileName), // Current working directory
-  path.resolve(process.cwd(), `../../${envFileName}`), // Two levels up from CWD
-];
-
-let envLoaded = false;
-for (const envPath of possibleEnvPaths) {
-  if (fs.existsSync(envPath)) {
-    dotenv.config({ path: envPath });
-    console.log(`✅ Loaded ${envFileName} from ${envPath}`);
-    envLoaded = true;
-    break;
-  }
-}
-
-if (!envLoaded) {
+if (fs.existsSync(envPath)) {
+  dotenv.config({ path: envPath });
+  console.log(`✅ Loaded ${envFile} from ${envPath}`);
+} else {
   console.warn(
-    `⚠️  No ${envFileName} file found. Relying on system environment variables.`,
+    `⚠️  No ${envFile} found. Copy .env.example to .env.local and fill in your values.`,
   );
 }
 
@@ -151,6 +141,8 @@ server.register(configRoutes);
 server.register(authRoutes);
 server.register(uploadRoutes);
 server.register(floatRoutes);
+server.register(organizationRoutes);
+server.register(domainRoutes);
 
 // ──────────────────────────────────────────────
 // Price Oracle Endpoint (Phase 1)

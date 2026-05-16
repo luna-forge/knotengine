@@ -1,4 +1,4 @@
-import { Notification, Merchant } from "@qodinger/knot-database";
+import { Notification, Merchant, Organization } from "@qodinger/knot-database";
 import { SocketService } from "./socket-service.js";
 import { EmailService } from "./email-service.js";
 
@@ -105,7 +105,8 @@ export class NotificationService {
    * Send email notifications for critical events
    */
   private static async sendEmailIfApplicable(params: {
-    merchantId: string;
+    merchantId?: string;
+    organizationId?: string;
     title: string;
     description: string;
     type: "success" | "warning" | "error" | "info";
@@ -114,19 +115,56 @@ export class NotificationService {
     forceSend: boolean;
   }) {
     try {
-      // Fetch merchant and user details
-      const merchant = await Merchant.findById(params.merchantId).populate(
-        "userId",
-      );
-      if (!merchant) return;
+      let merchantName = "";
+      let userEmail = "";
+      let orgPlan = "starter";
+      let orgSettings: any = {};
 
-      const user = merchant.userId as any;
-      if (!user || !user.email) return;
+      if (params.merchantId) {
+        const merchant = await Merchant.findById(params.merchantId).populate(
+          "userId",
+        );
+        if (!merchant) return;
 
-      const merchantName = merchant.name || user.email.split("@")[0];
+        const user = merchant.userId as any;
+        if (!user || !user.email) return;
+        userEmail = user.email;
+        merchantName = merchant.name || user.email.split("@")[0];
 
-      // Check email notification preferences
-      const prefs = merchant.emailNotifications || {
+        // Look up organization for plan and settings
+        if (merchant.organizationId) {
+          const org = await Organization.findById(merchant.organizationId);
+          if (org) {
+            orgPlan = org.plan;
+            orgSettings = org.settings || {};
+          }
+        }
+      } else if (params.organizationId) {
+        const org = await Organization.findById(params.organizationId);
+        if (!org) return;
+        orgPlan = org.plan;
+        orgSettings = org.settings || {};
+
+        // Get first owner/admin email
+        const { Membership } = await import("@qodinger/knot-database");
+        const adminMember = await Membership.findOne({
+          organizationId: org._id,
+          role: { $in: ["owner", "admin"] },
+        }).populate("userId");
+
+        if (adminMember) {
+          const user = adminMember.userId as any;
+          if (user && user.email) {
+            userEmail = user.email;
+            merchantName = org.name;
+          }
+        }
+      }
+
+      if (!userEmail) return;
+
+      // Check email notification preferences (from org settings)
+      const prefs = (orgSettings as any).emailNotifications || {
         paymentReceived: true,
         paymentConfirmed: true,
         paymentOverpaid: true,
@@ -191,7 +229,7 @@ export class NotificationService {
               : "received";
 
         await EmailService.sendPaymentAlert({
-          to: user.email,
+          to: userEmail,
           merchantName,
           invoiceId: params.meta?.invoiceId || "Unknown",
           amount: typeof amount === "number" ? amount.toFixed(2) : amount,
@@ -204,7 +242,7 @@ export class NotificationService {
       } else if (params.title.includes("Security")) {
         // Security alert
         await EmailService.sendSecurityAlert({
-          to: user.email,
+          to: userEmail,
           merchantName,
           action: params.title,
           description: params.description,
@@ -224,11 +262,11 @@ export class NotificationService {
             : "payment_received";
 
         await EmailService.sendBillingNotification({
-          to: user.email,
+          to: userEmail,
           merchantName,
           type,
           amount: params.meta?.amount?.toString(),
-          plan: merchant.plan,
+          plan: orgPlan,
           description: params.description,
         });
       }
@@ -392,5 +430,64 @@ export class NotificationService {
       link: "/dashboard/webhooks",
       meta: { invoiceId, error, isTestnet },
     });
+  }
+
+  /**
+   * Create notification scoped to an organization (no merchantId required)
+   */
+  public static async createOrgNotification(params: {
+    organizationId: string;
+    title: string;
+    description: string;
+    type: "success" | "warning" | "error" | "info";
+    link?: string;
+    meta?: Record<string, any>;
+    sendEmail?: boolean;
+  }) {
+    try {
+      const notification = await Notification.create({
+        organizationId: params.organizationId,
+        title: params.title,
+        description: params.description,
+        type: params.type,
+        link: params.link,
+        meta: params.meta,
+      });
+
+      // Emit to all merchants belonging to this organization
+      const { Merchant } = await import("@qodinger/knot-database");
+      const merchants = await Merchant.find({
+        organizationId: params.organizationId,
+        isActive: true,
+      });
+
+      for (const merchant of merchants) {
+        SocketService.emitToMerchant(merchant._id.toString(), "notification", {
+          id: notification._id,
+          title: notification.title,
+          description: notification.description,
+          type: notification.type,
+          link: notification.link,
+          isRead: notification.isRead,
+          createdAt: notification.createdAt,
+        });
+      }
+
+      // Send email if applicable
+      await this.sendEmailIfApplicable({
+        organizationId: params.organizationId,
+        title: params.title,
+        description: params.description,
+        type: params.type,
+        link: params.link,
+        meta: params.meta,
+        forceSend: params.sendEmail || false,
+      });
+
+      return notification;
+    } catch (err) {
+      console.error("❌ Failed to create org notification:", err);
+      return null;
+    }
   }
 }
