@@ -75,22 +75,21 @@ export default function PricingPage() {
                 </h3>
               </div>
               <div className="mb-4 flex items-baseline gap-1">
-                <span className="text-4xl font-bold text-zinc-400">$29</span>
-                <span className="text-sm text-zinc-600">/month</span>
+                <span className="text-4xl font-bold text-zinc-400">TBD</span>
               </div>
               <p className="mb-6 text-sm text-zinc-500">
-                Managed infrastructure. We handle servers, backups, and scaling.
+                Managed infrastructure. We handle servers, backups, and scaling
+                so you can focus on payments.
               </p>
 
               <ul className="mb-8 space-y-3">
                 {[
                   "Everything in Self-Host",
                   "Zero server maintenance",
-                  "Auto-scaling & backups",
-                  "Custom domains with SSL",
-                  "Team collaboration",
+                  "Managed backups & updates",
+                  "Custom domains with auto-SSL",
+                  "Team collaboration (RBAC)",
                   "Priority support",
-                  "99.9% SLA",
                 ].map((feature) => (
                   <li key={feature} className="flex items-start gap-3">
                     <Check className="mt-0.5 h-4 w-4 shrink-0 text-zinc-600" />
