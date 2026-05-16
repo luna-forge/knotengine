@@ -1,38 +1,73 @@
-# 🚀 KnotEngine
+<p align="center">
+  <h1 align="center">KnotEngine</h1>
+  <p align="center">
+    <strong>Minimalist, Non-Custodial Crypto Payment Infrastructure</strong>
+  </p>
+  <p align="center">
+    Accept Bitcoin, Ethereum & stablecoins without ever touching private keys.
+  </p>
+</p>
 
-**Minimalist, Non-Custodial Crypto Payment Infrastructure for Humans.**
+<p align="center">
+  <a href="https://github.com/qodinger/knotengine/releases"><img src="https://img.shields.io/github/v/release/qodinger/knotengine?color=blue&label=version&style=flat-square" alt="Version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-green?style=flat-square" alt="License" /></a>
+  <a href="https://pnpm.io"><img src="https://img.shields.io/badge/pnpm-9.0.0-orange?style=flat-square" alt="pnpm" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/badge/node-%E2%89%A520-brightgreen?style=flat-square" alt="Node.js" /></a>
+  <a href="https://github.com/qodinger/knotengine/actions"><img src="https://img.shields.io/github/actions/workflow/status/qodinger/knotengine/ci.yml?branch=main&style=flat-square" alt="CI" /></a>
+</p>
 
-[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/qodinger/knotengine/releases)
-[![License](https://img.shields.io/badge/license-AGPL--3.0-green.svg)](LICENSE)
-[![pnpm](https://img.shields.io/badge/pnpm-9.0.0-orange.svg)](https://pnpm.io)
-[![Node.js](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
+<p align="center">
+  <a href="#-quick-start">Quick Start</a> •
+  <a href="#-integration">Integration</a> •
+  <a href="#-docs">Docs</a> •
+  <a href="#-self-hosting">Self-Hosting</a> •
+  <a href="#-contributing">Contributing</a>
+</p>
 
-KnotEngine is a professional-grade, open-source crypto payment gateway. It lets developers accept Bitcoin, Ethereum, and stablecoins without ever losing custody of their private keys. Every invoice generates a unique on-chain address — funds flow directly to your wallet, never through KnotEngine's servers.
+---
+
+## What is KnotEngine?
+
+KnotEngine is an open-source crypto payment gateway that lets you accept crypto payments **without custody**. Every invoice generates a unique on-chain address — funds flow directly to your wallet, never through our servers.
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  Customer   │────▶│  Checkout UI │────▶│  Blockchain     │
+│  (Browser)  │     │  (Port 5051) │     │  (BTC/ETH/etc)  │
+└─────────────┘     └──────────────┘     └────────┬────────┘
+                                                  │
+┌─────────────┐     ┌──────────────┐     ┌────────▼────────┐
+│  Merchant   │◀────│   Dashboard  │◀────│   API Engine    │
+│  (Wallet)   │     │  (Port 5052) │     │   (Port 5050)   │
+└─────────────┘     └──────────────┘     └─────────────────┘
+```
+
+**You keep your keys. We handle the rest.**
 
 ---
 
 ## ✨ Features
 
-- **🛡️ 100% Non-Custodial** — HD Wallet derivation (BIP44) sends funds straight to your cold or hot wallet.
-- **🔐 Enterprise-Grade Security** — Two-Factor Authentication (TOTP), `mid_` prefixed Merchant IDs, and HMAC-signed webhooks.
-- **🚥 High Availability** — Dual-provider blockchain monitoring (Tatum + Alchemy) with automatic failover.
-- **📊 Professional Dashboard** — Modular Next.js merchant console with real-time Analytics and Activity History.
-- **⚡ Instant Alerts** — Mempool detection and confirmation notifications pushed instantly via Socket.io.
-- **🔌 Developer-First SDK** — Typed `@qodinger/knot-sdk` with full TypeScript support.
-- **✉️ Hybrid Email Engine** — Resend for production deliverability and Gmail SMTP for frictionless local development.
-- **🧹 Automatic Cleanup** — 30-day TTL policy on notification and webhook event collections keeps your database lean.
-
----
-
-## 🛠️ Prerequisites
-
-- **Node.js** v20 or later
-- **pnpm** `npm install -g pnpm`
-- **Docker** (for running MongoDB and Redis locally)
+| Category            | Feature                                                            |
+| ------------------- | ------------------------------------------------------------------ |
+| **🔐 Security**     | HD Wallet derivation (BIP44), 2FA (TOTP), HMAC-signed webhooks     |
+| **⚡ Real-time**    | Mempool detection, Socket.io push notifications, instant alerts    |
+| **🚥 Reliability**  | Dual-provider monitoring (Tatum + Alchemy) with automatic failover |
+| **📊 Dashboard**    | Analytics, payment history, webhook logs, merchant settings        |
+| **🔌 Developer**    | Typed SDK (`@qodinger/knot-sdk`), full TypeScript support          |
+| **🏠 Self-Host**    | One-command deploy on any VPS with Docker Compose                  |
+| **✉️ Email**        | Hybrid engine: Resend (prod) + Gmail SMTP (dev)                    |
+| **🧹 Auto-Cleanup** | 30-day TTL on notifications and webhook events                     |
 
 ---
 
 ## 🚀 Quick Start
+
+### Prerequisites
+
+- **Node.js** ≥ 20
+- **pnpm** (`npm install -g pnpm`)
+- **Docker** (for MongoDB & Redis)
 
 ### 1. Clone & Install
 
@@ -42,66 +77,43 @@ cd knotengine
 pnpm install
 ```
 
-### 2. Configure Environment
+### 2. Configure
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and set at minimum:
+Edit `.env` with your keys:
 
-| Variable          | Description                           |
-| :---------------- | :------------------------------------ |
-| `DATABASE_URL`    | MongoDB connection string             |
-| `TATUM_API_KEY`   | Tatum provider key (primary monitor)  |
-| `ALCHEMY_API_KEY` | Alchemy key (EVM redundancy provider) |
-| `JWT_SECRET`      | Random secret for session signing     |
-| `INTERNAL_SECRET` | Shared secret between API & Dashboard |
+| Variable          | Description                   |
+| ----------------- | ----------------------------- |
+| `DATABASE_URL`    | MongoDB connection string     |
+| `TATUM_API_KEY`   | Primary blockchain monitor    |
+| `ALCHEMY_API_KEY` | EVM failover provider         |
+| `JWT_SECRET`      | Session signing secret        |
+| `INTERNAL_SECRET` | API ↔ Dashboard shared secret |
 
-> **Tip:** Use `.env.example` for local development. Use `.env.production` for self-hosting (secrets are auto-generated by the install script).
-
-### 3. Start Everything
+### 3. Start
 
 ```bash
 pnpm start
 ```
 
-This starts **Docker infrastructure** (MongoDB, Redis) and **all apps** with hot-reload in one command.
+That's it. Everything runs locally:
 
-Or run services individually:
+| Service     | URL                     | Port |
+| ----------- | ----------------------- | ---- |
+| API Engine  | `http://localhost:5050` | 5050 |
+| Checkout UI | `http://localhost:5051` | 5051 |
+| Dashboard   | `http://localhost:5052` | 5052 |
 
-| Command              | Service                         | Port |
-| :------------------- | :------------------------------ | :--- |
-| `pnpm docker:up`     | Infrastructure (MongoDB, Redis) | -    |
-| `pnpm dev:api`       | API Engine                      | 5050 |
-| `pnpm dev:checkout`  | Checkout UI                     | 5051 |
-| `pnpm dev:dashboard` | Dashboard                       | 5052 |
-| `pnpm docker:down`   | Stop infrastructure             | -    |
+> **Stop:** Press `Ctrl+C` to stop apps, then `pnpm docker:down` for infrastructure.
 
 ---
 
-## 📡 Port Mapping
+## 🔌 Integration
 
-| Service         | Port | Description                  |
-| :-------------- | :--- | :--------------------------- |
-| **API Engine**  | 5050 | Core API & Socket.io Server  |
-| **Checkout UI** | 5051 | Customer-facing payment page |
-| **Dashboard**   | 5052 | Merchant Console & Analytics |
-
----
-
-## 🛒 Integration Guide
-
-### 1. Set Up Your Merchant Account
-
-Open the **Dashboard** at `http://localhost:5052`, register, and configure:
-
-- Your settlement wallet address (BTC xPub or EVM address)
-- Your webhook endpoint URL
-- Two-Factor Authentication (optional but recommended)
-- **Generate an API Key**: Go to Dashboard → Developers → API Keys → "Generate Key" (shown only once)
-
-### 2. Install the SDK
+### Install SDK
 
 ```bash
 npm install @qodinger/knot-sdk
@@ -109,14 +121,14 @@ npm install @qodinger/knot-sdk
 pnpm add @qodinger/knot-sdk
 ```
 
-### 3. Create an Invoice
+### Create Invoice
 
-```javascript
+```typescript
 import { KnotClient } from "@qodinger/knot-sdk";
 
 const knot = new KnotClient({
   apiKey: "knot_sk_your_api_key",
-  baseUrl: "http://localhost:5050", // default for dev
+  baseUrl: "http://localhost:5050",
 });
 
 const invoice = await knot.createInvoice({
@@ -125,209 +137,161 @@ const invoice = await knot.createInvoice({
   metadata: { orderId: "order_abc123" },
 });
 
-// Redirect customer to the hosted checkout page
+// Redirect customer to checkout
 console.log(invoice.checkout_url);
 ```
 
-### 4. Verify Webhooks
+### Handle Webhooks
 
-```javascript
-// Express example
+```typescript
 app.post("/webhooks/knot", (req, res) => {
   const signature = req.headers["x-knot-signature"];
-  const rawBody = JSON.stringify(req.body); // Use raw body, not parsed JSON
+  const rawBody = JSON.stringify(req.body);
 
-  const isValid = knot.verifyWebhook(rawBody, signature);
-  if (!isValid) return res.status(401).send("Invalid signature");
+  if (!knot.verifyWebhook(rawBody, signature)) {
+    return res.status(401).send("Invalid signature");
+  }
 
-  const event = req.body;
-  if (event.event === "invoice.confirmed") {
-    // Fulfill the order
-    console.log(`Payment confirmed for ${event.invoice_id}`);
+  const { event, invoice_id } = req.body;
+  if (event === "invoice.confirmed") {
+    // Fulfill order
+    console.log(`Payment confirmed: ${invoice_id}`);
   }
 
   res.status(200).send("OK");
 });
 ```
 
----
+### SDK Methods
 
-## 📚 Documentation
-
-- [API Reference](docs/API_REFERENCE.md) — All endpoints, request/response schemas
-- [Integration Guide](docs/INTEGRATION_GUIDE.md) — Step-by-step payment flow implementation
-- [SDK README](packages/sdk/README.md) — Full SDK API reference and error handling
-- [Contributing](CONTRIBUTING.md) — Development setup and PR guidelines
-
----
-
-## 🧪 Testing & Simulation
-
-Run the full test suite:
-
-```bash
-pnpm test
-```
-
-To test local webhooks via a public tunnel:
-
-```bash
-pnpm tunnel  # Uses cloudflared to expose localhost:5050
-```
-
-Use the **Simulator** tab in the Dashboard to trigger test payment events (Mempool → Confirming → Confirmed) against any active testnet invoice.
+| Method                  | Description                    |
+| ----------------------- | ------------------------------ |
+| `createInvoice()`       | Create a new payment invoice   |
+| `listInvoices()`        | List all invoices with filters |
+| `cancelInvoice()`       | Cancel a pending invoice       |
+| `resolveInvoice()`      | Manually mark as paid          |
+| `getMerchant()`         | Get merchant profile           |
+| `updateMerchant()`      | Update merchant settings       |
+| `rotateApiKey()`        | Rotate API key securely        |
+| `rotateWebhookSecret()` | Rotate webhook signing secret  |
+| `sendTestWebhook()`     | Test webhook endpoint          |
+| `getAssetConfig()`      | Get supported currencies       |
+| `getMerchantStats()`    | Get merchant analytics         |
 
 ---
 
-## 💰 Transparent Pricing
+## 📚 Docs
 
-| Plan             | Transaction Fee | Monthly Cost | Support               |
-| :--------------- | :-------------- | :----------- | :-------------------- |
-| **Starter**      | 1.0%            | $0           | Community             |
-| **Professional** | 0.5%            | $39          | Email (1-2 days)      |
-| **Enterprise**   | 0.25%           | $149         | Priority Inbox + Call |
-
-**No hidden spreads. No recapture mechanics.** Merchants receive 100% of invoice value; fees are transparently deducted from prepaid credit balance.
-
----
-
-## 🏗️ Project Structure
-
-```
-knotengine/
-├── apps/
-│   ├── api/          # Fastify-based payment engine (Port 5050)
-│   ├── checkout/     # Next.js customer payment interface (Port 5051)
-│   └── dashboard/    # Next.js merchant console (Port 5052)
-└── packages/
-    ├── crypto/       # BIP32/BIP44 HD wallet derivation engine
-    ├── database/     # Mongoose models with TTL auto-pruning
-    ├── types/        # Shared TypeScript definitions
-    └── sdk/          # Official @qodinger/knot-sdk
-```
+| Resource                                       | Description                      |
+| ---------------------------------------------- | -------------------------------- |
+| [API Reference](docs/API_REFERENCE.md)         | All endpoints, schemas, examples |
+| [Integration Guide](docs/INTEGRATION_GUIDE.md) | Step-by-step payment flow        |
+| [SDK README](packages/sdk/README.md)           | Full SDK API reference           |
+| [Contributing](CONTRIBUTING.md)                | Dev setup & PR guidelines        |
+| [Changelog](CHANGELOG.md)                      | Version history                  |
 
 ---
 
 ## 🏠 Self-Hosting
 
-KnotEngine is fully self-hostable under the AGPL-3.0 license. Deploy everything on a single VPS with one command.
-
-### Minimum Requirements
-
-| Resource | Minimum                  | Recommended  |
-| :------- | :----------------------- | :----------- |
-| CPU      | 1 vCPU                   | 2 vCPU       |
-| RAM      | 1 GB                     | 2 GB         |
-| Disk     | 10 GB                    | 20 GB        |
-| OS       | Ubuntu 24.04 / Debian 12 | Alpine Linux |
-
-### Quick Install
+Deploy on any VPS with one command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/qodinger/knotengine/main/scripts/install.sh | bash
 ```
 
-Or manual setup:
+### Requirements
+
+| Resource | Minimum                  | Recommended  |
+| -------- | ------------------------ | ------------ |
+| CPU      | 1 vCPU                   | 2 vCPU       |
+| RAM      | 1 GB                     | 2 GB         |
+| Disk     | 10 GB                    | 20 GB        |
+| OS       | Ubuntu 24.04 / Debian 12 | Alpine Linux |
+
+### Manual Setup
 
 ```bash
-# 1. Clone
 git clone https://github.com/qodinger/knotengine.git
 cd knotengine
-
-# 2. Configure (secrets auto-generated)
-cp .env.production .env
-
-# 3. Start everything
+cp .env.production .env  # secrets auto-generated
 docker compose up -d --build
 ```
 
 ### Services
 
-| Service   | URL                       | Port  |
-| :-------- | :------------------------ | :---- |
-| API       | `http://your-server:5050` | 5050  |
-| Dashboard | `http://your-server:5052` | 5052  |
-| Checkout  | `http://your-server:5051` | 5051  |
-| MongoDB   | Internal (not exposed)    | 27017 |
-| Redis     | Internal (not exposed)    | 6379  |
-
-### Reverse Proxy (Recommended)
-
-Set up Nginx with SSL to route traffic:
-
-```nginx
-server {
-    listen 80;
-    server_name api.yourdomain.com;
-    location / {
-        proxy_pass http://127.0.0.1:5050;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";  # WebSocket support
-    }
-}
-
-server {
-    listen 80;
-    server_name dashboard.yourdomain.com;
-    location / {
-        proxy_pass http://127.0.0.1:5052;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-
-server {
-    listen 80;
-    server_name checkout.yourdomain.com;
-    location / {
-        proxy_pass http://127.0.0.1:5051;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-Then add SSL with Certbot:
-
-```bash
-sudo certbot --nginx -d api.yourdomain.com -d dashboard.yourdomain.com -d checkout.yourdomain.com
-```
+| Service   | Port  | Notes                   |
+| --------- | ----- | ----------------------- |
+| API       | 5050  | Core engine + WebSocket |
+| Dashboard | 5052  | Merchant console        |
+| Checkout  | 5051  | Customer payment page   |
+| MongoDB   | 27017 | Internal only           |
+| Redis     | 6379  | Internal only           |
 
 ### Management
 
 ```bash
-# View logs
-docker compose logs -f api
+docker compose logs -f api      # View logs
+docker compose restart dashboard # Restart service
+git pull && docker compose up -d --build  # Update
+docker compose down             # Stop all
+```
 
-# Restart a service
-docker compose restart dashboard
+---
 
-# Update to latest version
-git pull && docker compose up -d --build
+## 💰 Pricing
 
-# Stop everything
-docker compose down
+| Plan             | Fee   | Monthly | Support          |
+| ---------------- | ----- | ------- | ---------------- |
+| **Starter**      | 1.0%  | $0      | Community        |
+| **Professional** | 0.5%  | $39     | Email (1-2 days) |
+| **Enterprise**   | 0.25% | $149    | Priority + Call  |
+
+No hidden fees. No spreads. Merchants receive 100% of invoice value.
+
+---
+
+## 🏗️ Architecture
+
+```
+knotengine/
+├── apps/
+│   ├── api/          # Fastify payment engine (5050)
+│   ├── checkout/     # Next.js customer UI (5051)
+│   └── dashboard/    # Next.js merchant console (5052)
+├── packages/
+│   ├── crypto/       # BIP32/BIP44 HD wallet derivation
+│   ├── database/     # Mongoose models + TTL cleanup
+│   ├── types/        # Shared TypeScript definitions
+│   └── sdk/          # @qodinger/knot-sdk
+├── docs/             # API reference & guides
+├── scripts/          # Deploy & utility scripts
+└── .github/          # CI/CD workflows
 ```
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Please follow [Conventional Commits](https://www.conventionalcommits.org) for all commit messages — enforced via `commitlint`.
+We welcome contributions! Please follow [Conventional Commits](https://www.conventionalcommits.org):
 
 ```bash
-git checkout -b feat/my-feature
+git checkout -b feat/lightning-network
 # ... make changes ...
-git commit -m "feat(api): add support for Lightning Network"
-git push origin feat/my-feature
+git commit -m "feat(api): add Lightning Network support"
+git push origin feat/lightning-network
 ```
 
-Open a Pull Request to the `main` branch.
+Open a PR to `main`. CI runs lint, tests, and Docker build automatically.
 
 ---
 
 ## 📄 License
 
-KnotEngine is licensed under the [GNU Affero General Public License v3.0](LICENSE).
+[AGPL-3.0](LICENSE) — Free to use, modify, and self-host.
+
+---
+
+<p align="center">
+  Built with ❤️ by the KnotEngine community
+</p>

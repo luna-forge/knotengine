@@ -2,64 +2,66 @@
 
 Thank you for your interest in contributing! This guide will help you get started.
 
-## Development Setup
+## Quick Start
 
 ### Prerequisites
 
-- **Node.js** v20 or later
+- **Node.js** ≥ 20
 - **pnpm** (`npm install -g pnpm`)
-- **Docker** (for MongoDB and Redis)
+- **Docker** (for MongoDB & Redis)
 
-### Quick Start
+### Setup
 
 ```bash
-# 1. Fork and clone the repository
+# 1. Fork and clone
 git clone https://github.com/YOUR_USERNAME/knotengine.git
 cd knotengine
 
 # 2. Install dependencies
 pnpm install
 
-# 3. Set up environment
+# 3. Configure environment
 cp .env.example .env
 
-# 4. Start everything (Docker + Apps)
+# 4. Start everything
 pnpm start
 ```
 
-Press `Ctrl+C` to stop apps, then run `pnpm docker:down` to stop infrastructure.
+Press `Ctrl+C` to stop apps. Run `pnpm docker:down` to stop infrastructure.
 
-### Running Services Individually
+### Useful Commands
 
-| Command              | Service     | Port |
-| -------------------- | ----------- | ---- |
-| `pnpm dev:api`       | API Engine  | 5050 |
-| `pnpm dev:checkout`  | Checkout UI | 5051 |
-| `pnpm dev:dashboard` | Dashboard   | 5052 |
+| Command              | Description                      |
+| -------------------- | -------------------------------- |
+| `pnpm start`         | Start Docker + all apps          |
+| `pnpm dev:api`       | Start API only (port 5050)       |
+| `pnpm dev:dashboard` | Start Dashboard only (port 5052) |
+| `pnpm test`          | Run all tests                    |
+| `pnpm lint`          | Run linter                       |
+| `pnpm build`         | Build all packages               |
+| `pnpm docker:down`   | Stop Docker containers           |
+
+---
 
 ## Commit Convention
 
-We use [Conventional Commits](https://www.conventionalcommits.org/) for all commits:
+We use [Conventional Commits](https://www.conventionalcommits.org/). Enforced via `commitlint`.
 
 ```
 <type>(<scope>): <description>
-
-[optional body]
-
-[optional footer(s)]
 ```
 
 ### Types
 
-| Type       | Description                                      |
-| ---------- | ------------------------------------------------ |
-| `feat`     | New feature                                      |
-| `fix`      | Bug fix                                          |
-| `docs`     | Documentation changes                            |
-| `style`    | Code style changes (formatting, no logic change) |
-| `refactor` | Code refactoring (no feature change or bug fix)  |
-| `test`     | Adding or updating tests                         |
-| `chore`    | Maintenance tasks, dependencies, CI              |
+| Type       | Description                            |
+| ---------- | -------------------------------------- |
+| `feat`     | New feature                            |
+| `fix`      | Bug fix                                |
+| `docs`     | Documentation only                     |
+| `style`    | Formatting, no logic change            |
+| `refactor` | Code restructuring, no behavior change |
+| `test`     | Adding or updating tests               |
+| `chore`    | Maintenance, dependencies, CI          |
 
 ### Examples
 
@@ -71,49 +73,62 @@ test(api): add e2e tests for invoice creation
 chore(deps): update pnpm to v9
 ```
 
+---
+
 ## Pull Request Process
 
-1. **Create a branch** from `main` with a descriptive name:
+1. **Create a branch** from `main`:
 
    ```bash
    git checkout -b feat/webhook-delivery-logs
    ```
 
-2. **Make your changes** and ensure:
-   - All tests pass: `pnpm test`
-   - Build succeeds: `pnpm build`
-   - No lint errors: `pnpm lint`
+2. **Make your changes** and verify:
 
-3. **Commit your changes** using the conventional commit format.
+   ```bash
+   pnpm test    # All tests pass
+   pnpm build   # Build succeeds
+   pnpm lint    # No errors
+   ```
 
-4. **Push to your fork** and open a Pull Request:
+3. **Commit** with conventional format:
+
+   ```bash
+   git commit -m "feat(api): add webhook delivery logs"
+   ```
+
+4. **Push and open a PR**:
 
    ```bash
    git push origin feat/webhook-delivery-logs
    ```
 
 5. **Fill out the PR template** with:
-   - Description of changes
+   - What changed and why
    - Testing performed
-   - Related issues (if any)
+   - Related issues
+
+---
 
 ## Project Structure
 
 ```
 knotengine/
 ├── apps/
-│   ├── api/          # Fastify payment engine (Port 5050)
-│   ├── checkout/     # Next.js customer payment UI (Port 5051)
-│   └── dashboard/    # Next.js merchant console (Port 5052)
+│   ├── api/          # Fastify payment engine (5050)
+│   ├── checkout/     # Next.js customer UI (5051)
+│   └── dashboard/    # Next.js merchant console (5052)
 ├── packages/
 │   ├── crypto/       # BIP32/BIP44 HD wallet derivation
-│   ├── database/     # Mongoose models with TTL
+│   ├── database/     # Mongoose models + TTL
 │   ├── types/        # Shared TypeScript definitions
 │   └── sdk/          # @qodinger/knot-sdk
-├── docs/             # Documentation
-├── scripts/          # Utility scripts
-└── .github/          # Workflows and templates
+├── docs/             # API reference & guides
+├── scripts/          # Deploy & utility scripts
+└── .github/          # CI/CD, Dependabot, templates
 ```
+
+---
 
 ## Testing
 
@@ -121,7 +136,7 @@ knotengine/
 # Run all tests
 pnpm test
 
-# Run tests for a specific package
+# Run specific package tests
 pnpm --filter @qodinger/knot-sdk test
 pnpm --filter api test
 
@@ -129,19 +144,27 @@ pnpm --filter api test
 KNOT_API_URL=http://localhost:5050 KNOT_API_KEY=knot_sk_test_... pnpm test:e2e
 ```
 
+---
+
 ## Documentation
 
-When adding or changing features, please update the relevant documentation:
+Update docs when changing features:
 
-- **API changes** → `docs/API_REFERENCE.md`
-- **Integration changes** → `docs/INTEGRATION_GUIDE.md`
-- **SDK changes** → `packages/sdk/README.md`
-- **General changes** → `README.md` or `CHANGELOG.md`
+| Change           | Update                        |
+| ---------------- | ----------------------------- |
+| API endpoints    | `docs/API_REFERENCE.md`       |
+| Integration flow | `docs/INTEGRATION_GUIDE.md`   |
+| SDK methods      | `packages/sdk/README.md`      |
+| General          | `README.md` or `CHANGELOG.md` |
+
+---
 
 ## Reporting Issues
 
-- **Bug reports**: Use the [Bug Report](https://github.com/qodinger/knotengine/issues/new?template=bug_report.md) template
-- **Feature requests**: Use the [Feature Request](https://github.com/qodinger/knotengine/issues/new?template=feature_request.md) template
+- **Bug reports**: [Bug Report Template](https://github.com/qodinger/knotengine/issues/new?template=bug_report.md)
+- **Feature requests**: [Feature Request Template](https://github.com/qodinger/knotengine/issues/new?template=feature_request.md)
+
+---
 
 ## License
 
