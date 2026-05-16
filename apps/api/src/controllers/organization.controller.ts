@@ -8,6 +8,7 @@ import {
 } from "@qodinger/knot-database";
 import { SubscriptionBilling } from "../core/subscription-billing.js";
 import * as crypto from "crypto";
+import { isValidHttpUrl } from "../utils/crypto.js";
 
 async function ensureUserHasOrganization(
   userId: string,
@@ -101,6 +102,30 @@ export class OrganizationController {
     });
 
     if (!org) return reply.code(404).send({ error: "Organization not found" });
+
+    const merchant = (request as any).merchant;
+    const userId = (request as any).userId;
+
+    if (
+      merchant?.organizationId &&
+      String(merchant.organizationId) !== String(org._id)
+    ) {
+      return reply
+        .code(403)
+        .send({ error: "Forbidden: no access to this organization" });
+    }
+
+    if (userId) {
+      const membership = await Membership.findOne({
+        userId,
+        organizationId: org._id,
+      });
+      if (!membership) {
+        return reply
+          .code(403)
+          .send({ error: "Forbidden: no access to this organization" });
+      }
+    }
 
     return reply.send({ organization: org });
   }
@@ -471,12 +496,36 @@ export class OrganizationController {
     }
 
     try {
-      const res = await fetch(
-        `https://${domain}/.well-known/knotengine-verification.txt`,
-        {
-          signal: AbortSignal.timeout(10000),
-        },
-      );
+      const verificationUrl = `https://${domain}/.well-known/knotengine-verification.txt`;
+
+      if (!isValidHttpUrl(verificationUrl)) {
+        return reply.code(400).send({ error: "Invalid domain format" });
+      }
+
+      const hostname = new URL(verificationUrl).hostname;
+      const blockedPatterns = [
+        /^localhost$/i,
+        /^127\./,
+        /^10\./,
+        /^192\.168\./,
+        /^172\.(1[6-9]|2\d|3[01])\./,
+        /^::1$/,
+        /^fe80:/,
+        /^fc00:/,
+        /internal/i,
+        /metadata/i,
+      ];
+
+      if (blockedPatterns.some((pattern) => pattern.test(hostname))) {
+        return reply.code(400).send({
+          error: "Domain verification not allowed for internal addresses",
+        });
+      }
+
+      const res = await fetch(verificationUrl, {
+        signal: AbortSignal.timeout(10000),
+        redirect: "error",
+      });
 
       if (!res.ok) {
         return reply.send({

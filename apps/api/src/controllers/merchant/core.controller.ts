@@ -8,6 +8,7 @@ import { ethers } from "ethers";
 import { FastifyRequest } from "fastify";
 import * as ecc from "tiny-secp256k1";
 import { AuditLogger } from "../../core/audit-logger.js";
+import { safeCompare } from "../../utils/crypto.js";
 
 const bip32 = BIP32Factory(ecc);
 
@@ -67,10 +68,10 @@ export const MerchantCoreController = {
     // Security: Creating a merchant for an OAuth user requires internal privilege
     if (oauthId) {
       const secret = request.headers["x-internal-secret"];
-      if (secret !== process.env.INTERNAL_SECRET) {
+      if (!secret || !safeCompare(secret, process.env.INTERNAL_SECRET || "")) {
         return reply
-          .code(403)
-          .send({ error: "Forbidden: Internal Secret Required" });
+          .code(401)
+          .send({ error: "Unauthorized: Internal Secret Required" });
       }
     }
 
@@ -228,9 +229,9 @@ export const MerchantCoreController = {
     reply: FastifyReply,
   ) => {
     // Protect with internal secret
-    const secret = request.headers["x-internal-secret"];
-    if (secret !== process.env.INTERNAL_SECRET) {
-      return reply.code(403).send({ error: "Forbidden" });
+    const secret = request.headers["x-internal-secret"] as string;
+    if (!secret || !safeCompare(secret, process.env.INTERNAL_SECRET || "")) {
+      return reply.code(401).send({ error: "Unauthorized" });
     }
 
     const { oauthId } = request.params;
@@ -341,7 +342,7 @@ export const MerchantCoreController = {
   },
   getProfile: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return reply.code(500).send({ error: "Auth failed" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     const sanitizeXpub = (val?: string) =>
       val && (val.startsWith("mid_") || val.startsWith("knot_")) ? null : val;
@@ -414,7 +415,7 @@ export const MerchantCoreController = {
   },
   deleteProfile: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return reply.code(500).send({ error: "Auth failed" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     await Merchant.findByIdAndDelete(merchant._id);
 
@@ -427,7 +428,7 @@ export const MerchantCoreController = {
   },
   updateProfile: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return reply.code(500).send({ error: "Auth failed" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     const updates = request.body;
 

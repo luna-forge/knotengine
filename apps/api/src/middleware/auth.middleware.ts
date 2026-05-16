@@ -7,6 +7,7 @@ import {
   User,
 } from "@qodinger/knot-database";
 import * as crypto from "crypto";
+import { safeCompare } from "../utils/crypto.js";
 
 function escapeRegExp(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -88,7 +89,11 @@ export const requireAuth = async (
   const merchantId = request.headers["x-merchant-id"] as string;
   const secret = request.headers["x-internal-secret"] as string;
 
-  if (oauthId && secret?.trim() === process.env.INTERNAL_SECRET?.trim()) {
+  if (
+    oauthId &&
+    secret &&
+    safeCompare(secret.trim(), process.env.INTERNAL_SECRET?.trim() || "")
+  ) {
     const query: Record<string, unknown> = {
       oauthId: { $regex: new RegExp(`^${escapeRegExp(oauthId)}(:|$)`) },
       isActive: true,

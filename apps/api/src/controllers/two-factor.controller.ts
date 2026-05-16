@@ -7,14 +7,14 @@ import * as QRCode from "qrcode";
 export const TwoFactorController = {
   setup: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return reply.code(500).send({ error: "Auth failed" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     const user = merchant.userId ? await User.findById(merchant.userId) : null;
     if (!user)
-      return reply.code(400).send({ error: "User identity not found." });
+      return reply.code(404).send({ error: "User identity not found." });
 
     if (user.twoFactorEnabled) {
-      return reply.code(400).send({
+      return reply.code(409).send({
         error:
           "Two-factor authentication is already enabled. Disable it first to reconfigure.",
       });
@@ -55,15 +55,15 @@ export const TwoFactorController = {
 
   enable: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return reply.code(500).send({ error: "Auth failed" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     const user = merchant.userId ? await User.findById(merchant.userId) : null;
     if (!user)
-      return reply.code(400).send({ error: "User identity not found." });
+      return reply.code(404).send({ error: "User identity not found." });
 
     if (user.twoFactorEnabled) {
       return reply
-        .code(400)
+        .code(409)
         .send({ error: "Two-factor authentication is already enabled." });
     }
 
@@ -118,11 +118,11 @@ export const TwoFactorController = {
 
   validate: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return reply.code(500).send({ error: "Auth failed" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     const user = merchant.userId ? await User.findById(merchant.userId) : null;
     if (!user)
-      return reply.code(400).send({ error: "User identity not found." });
+      return reply.code(404).send({ error: "User identity not found." });
 
     if (!user.twoFactorEnabled || !user.twoFactorSecret) {
       return reply.code(400).send({
@@ -180,11 +180,11 @@ export const TwoFactorController = {
 
   disable: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return reply.code(500).send({ error: "Auth failed" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     const user = merchant.userId ? await User.findById(merchant.userId) : null;
     if (!user)
-      return reply.code(400).send({ error: "User identity not found." });
+      return reply.code(404).send({ error: "User identity not found." });
 
     if (!user.twoFactorEnabled || !user.twoFactorSecret) {
       return reply.code(400).send({
@@ -227,12 +227,12 @@ export const TwoFactorController = {
 
   getStatus: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return reply.code(500).send({ error: "Auth failed" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     const user = merchant.userId ? await User.findById(merchant.userId) : null;
 
-    return reply.code(200).send({
+    return {
       enabled: user?.twoFactorEnabled === true,
-    });
+    };
   },
 };

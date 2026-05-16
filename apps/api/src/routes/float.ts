@@ -2,15 +2,13 @@ import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { FloatController } from "../controllers/float.controller.js";
 import { requireAuth } from "../middleware/auth.middleware.js";
+import { requireAdmin } from "../middleware/rbac.middleware.js";
 
 export async function floatRoutes(server: FastifyInstance) {
-  // ──────────────────────────────────────────────
-  // GET /v1/float/stats — Get float statistics (admin only)
-  // ──────────────────────────────────────────────
   server.get(
     "/v1/float/stats",
     {
-      preHandler: requireAuth,
+      preHandler: [requireAuth, requireAdmin],
       schema: {
         response: {
           200: {
@@ -29,13 +27,10 @@ export async function floatRoutes(server: FastifyInstance) {
     FloatController.getStats,
   );
 
-  // ──────────────────────────────────────────────
-  // POST /v1/float/invest — Manual float investment (admin only)
-  // ──────────────────────────────────────────────
   server.post(
     "/v1/float/invest",
     {
-      preHandler: requireAuth,
+      preHandler: [requireAuth, requireAdmin],
       schema: {
         body: z.object({
           amount: z.number().positive().optional(),
@@ -55,13 +50,10 @@ export async function floatRoutes(server: FastifyInstance) {
     FloatController.investFloat,
   );
 
-  // ──────────────────────────────────────────────
-  // GET /v1/float/health — Get float health metrics (admin only)
-  // ──────────────────────────────────────────────
   server.get(
     "/v1/float/health",
     {
-      preHandler: requireAuth,
+      preHandler: [requireAuth, requireAdmin],
       schema: {
         response: {
           200: {
@@ -78,13 +70,10 @@ export async function floatRoutes(server: FastifyInstance) {
     FloatController.getHealth,
   );
 
-  // ──────────────────────────────────────────────
-  // POST /v1/float/emergency-withdraw — Emergency withdrawal (admin only)
-  // ──────────────────────────────────────────────
   server.post(
     "/v1/float/emergency-withdraw",
     {
-      preHandler: requireAuth,
+      preHandler: [requireAuth, requireAdmin],
       schema: {
         response: {
           200: {

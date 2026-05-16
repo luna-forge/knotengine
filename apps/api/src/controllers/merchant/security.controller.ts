@@ -33,7 +33,7 @@ function ipToNumber(ip: string): number {
 export const MerchantSecurityController = {
   testWebhook: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
-    if (!merchant) return reply.code(500).send({ error: "Auth failed" });
+    if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
     try {
       await WebhookDispatcher.dispatchTest(merchant._id.toString());

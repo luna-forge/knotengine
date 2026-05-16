@@ -2,13 +2,14 @@ import { FastifyReply } from "fastify";
 import { PromoCode, User } from "@qodinger/knot-database";
 import * as crypto from "crypto";
 import { NotificationService } from "../../infra/notification-service.js";
+import { safeCompare } from "../../utils/crypto.js";
 
 export const MerchantPromoController = {
   generatePromo: async (request: any, reply: FastifyReply) => {
     // Protect with internal secret
     const secret = request.headers["x-internal-secret"];
-    if (secret !== process.env.INTERNAL_SECRET) {
-      return reply.code(403).send({ error: "Forbidden" });
+    if (!secret || !safeCompare(secret, process.env.INTERNAL_SECRET || "")) {
+      return reply.code(401).send({ error: "Unauthorized" });
     }
 
     const { amountUsd, maxUses, expiresInDays, customCode } = request.body;

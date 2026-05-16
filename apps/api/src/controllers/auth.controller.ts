@@ -3,6 +3,7 @@ import * as crypto from "crypto";
 import { FastifyReply, FastifyRequest } from "fastify";
 import { AuditLogger } from "../core/audit-logger.js";
 import { EmailService } from "../infra/email-service.js";
+import { safeCompare } from "../utils/crypto.js";
 
 const DASHBOARD_URL = process.env.DASHBOARD_URL || "http://localhost:5052";
 
@@ -189,7 +190,11 @@ export const AuthController = {
     const oauthId = request.headers["x-oauth-id"] as string;
     const internalSecret = request.headers["x-internal-secret"] as string;
 
-    if (!oauthId || internalSecret !== process.env.INTERNAL_SECRET) {
+    if (
+      !oauthId ||
+      !internalSecret ||
+      !safeCompare(internalSecret, process.env.INTERNAL_SECRET || "")
+    ) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
 
@@ -215,7 +220,11 @@ export const AuthController = {
     const oauthId = request.headers["x-oauth-id"] as string;
     const internalSecret = request.headers["x-internal-secret"] as string;
 
-    if (!oauthId || internalSecret !== process.env.INTERNAL_SECRET) {
+    if (
+      !oauthId ||
+      !internalSecret ||
+      !safeCompare(internalSecret, process.env.INTERNAL_SECRET || "")
+    ) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
 

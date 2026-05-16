@@ -13,6 +13,7 @@ import {
   MAX_TXHASH_LENGTH,
 } from "@qodinger/knot-types";
 import * as crypto from "crypto";
+import { safeCompare } from "../utils/crypto.js";
 import { MerchantBillingController } from "../controllers/merchant/billing.controller.js";
 import { MerchantCoreController } from "../controllers/merchant/core.controller.js";
 import { MerchantNotificationController } from "../controllers/merchant/notification.controller.js";
@@ -63,7 +64,11 @@ export async function merchantRoutes(app: FastifyInstance) {
     const merchantId = request.headers["x-merchant-id"] as string;
     const secret = request.headers["x-internal-secret"] as string;
 
-    if (!oauthId || secret !== process.env.INTERNAL_SECRET) {
+    if (
+      !oauthId ||
+      !secret ||
+      !safeCompare(secret, process.env.INTERNAL_SECRET || "")
+    ) {
       return reply.code(401).send({ error: "Unauthorized" });
     }
 

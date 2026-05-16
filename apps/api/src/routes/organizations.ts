@@ -11,6 +11,16 @@ import { OrganizationController } from "../controllers/organization.controller.j
 import { requireAuth } from "../middleware/auth.middleware.js";
 import { requireAdmin, requireOwner } from "../middleware/rbac.middleware.js";
 
+const orgIdParam = z.object({ id: z.string().min(1) });
+const memberIdParam = z.object({
+  id: z.string().min(1),
+  memberId: z.string().min(1),
+});
+const keyIdParam = z.object({
+  id: z.string().min(1),
+  keyId: z.string().min(1),
+});
+
 export async function organizationRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
 
@@ -36,7 +46,7 @@ export async function organizationRoutes(app: FastifyInstance) {
 
   server.get(
     "/v1/organizations/:id",
-    { preHandler: requireAuth },
+    { preHandler: requireAuth, schema: { params: orgIdParam } },
     OrganizationController.getOrganization,
   );
 
@@ -45,6 +55,7 @@ export async function organizationRoutes(app: FastifyInstance) {
     {
       preHandler: [requireAuth, requireAdmin],
       schema: {
+        params: orgIdParam,
         body: z.object({
           name: z.string().min(1).max(MAX_TEXT_LENGTH).optional(),
           slug: z.string().min(1).max(50).optional(),
@@ -67,13 +78,13 @@ export async function organizationRoutes(app: FastifyInstance) {
 
   server.delete(
     "/v1/organizations/:id",
-    { preHandler: [requireAuth, requireOwner] },
+    { preHandler: [requireAuth, requireOwner], schema: { params: orgIdParam } },
     OrganizationController.deleteOrganization,
   );
 
   server.get(
     "/v1/organizations/:id/members",
-    { preHandler: requireAuth },
+    { preHandler: requireAuth, schema: { params: orgIdParam } },
     OrganizationController.listMembers,
   );
 
@@ -82,6 +93,7 @@ export async function organizationRoutes(app: FastifyInstance) {
     {
       preHandler: [requireAuth, requireAdmin],
       schema: {
+        params: orgIdParam,
         body: z.object({
           email: z.string().email().max(MAX_EMAIL_LENGTH),
           role: z.enum(["admin", "member", "viewer"]),
@@ -96,6 +108,7 @@ export async function organizationRoutes(app: FastifyInstance) {
     {
       preHandler: [requireAuth, requireOwner],
       schema: {
+        params: memberIdParam,
         body: z.object({
           role: z.enum(["admin", "member", "viewer"]),
         }),
@@ -106,7 +119,10 @@ export async function organizationRoutes(app: FastifyInstance) {
 
   server.delete(
     "/v1/organizations/:id/members/:memberId",
-    { preHandler: [requireAuth, requireAdmin] },
+    {
+      preHandler: [requireAuth, requireAdmin],
+      schema: { params: memberIdParam },
+    },
     OrganizationController.removeMember,
   );
 
@@ -125,7 +141,7 @@ export async function organizationRoutes(app: FastifyInstance) {
 
   server.get(
     "/v1/organizations/:id/keys",
-    { preHandler: [requireAuth, requireAdmin] },
+    { preHandler: [requireAuth, requireAdmin], schema: { params: orgIdParam } },
     OrganizationController.listApiKeys,
   );
 
@@ -134,6 +150,7 @@ export async function organizationRoutes(app: FastifyInstance) {
     {
       preHandler: [requireAuth, requireAdmin],
       schema: {
+        params: orgIdParam,
         body: z.object({
           label: z.string().min(1).max(50),
           permissions: z.array(z.string()).default(["read", "write"]),
@@ -146,13 +163,13 @@ export async function organizationRoutes(app: FastifyInstance) {
 
   server.delete(
     "/v1/organizations/:id/keys/:keyId",
-    { preHandler: [requireAuth, requireOwner] },
+    { preHandler: [requireAuth, requireOwner], schema: { params: keyIdParam } },
     OrganizationController.revokeApiKey,
   );
 
   server.get(
     "/v1/organizations/:id/billing",
-    { preHandler: [requireAuth, requireAdmin] },
+    { preHandler: [requireAuth, requireAdmin], schema: { params: orgIdParam } },
     OrganizationController.getBillingStatus,
   );
 
@@ -161,6 +178,7 @@ export async function organizationRoutes(app: FastifyInstance) {
     {
       preHandler: [requireAuth, requireOwner],
       schema: {
+        params: orgIdParam,
         body: z.object({
           plan: z.enum(["starter", "professional", "enterprise"]),
         }),
@@ -171,13 +189,13 @@ export async function organizationRoutes(app: FastifyInstance) {
 
   server.post(
     "/v1/organizations/:id/domain/generate-token",
-    { preHandler: [requireAuth, requireAdmin] },
+    { preHandler: [requireAuth, requireAdmin], schema: { params: orgIdParam } },
     OrganizationController.generateDomainToken,
   );
 
   server.post(
     "/v1/organizations/:id/domain/verify",
-    { preHandler: [requireAuth, requireAdmin] },
+    { preHandler: [requireAuth, requireAdmin], schema: { params: orgIdParam } },
     OrganizationController.verifyDomain,
   );
 }
