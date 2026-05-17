@@ -74,14 +74,14 @@ export default function CheckoutPageClient({
       socket.emit("join_invoice", invoiceId);
     });
 
-    socket.on(
-      "status_update",
-      (data: {
-        status: string;
-        confirmations: number;
-        txHash: string;
-        cryptoAmountReceived?: number;
-      }) => {
+      socket.on(
+        "status_update",
+        (data: {
+          status: string;
+          confirmations: number;
+          txHash: string | null;
+          cryptoAmountReceived?: number;
+        }) => {
         setInvoice((prev) => {
           if (!prev) return prev;
           return {

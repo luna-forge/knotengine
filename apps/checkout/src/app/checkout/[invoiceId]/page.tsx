@@ -43,7 +43,7 @@ export async function generateMetadata({
       description: `Amount: ${amount}. Pay securely with crypto via KnotEngine.`,
       images: invoice.merchant?.logo_url
         ? [invoice.merchant.logo_url]
-        : ["/og-image-checkout.png"],
+        : undefined,
     },
     twitter: {
       card: "summary",
@@ -51,7 +51,7 @@ export async function generateMetadata({
       description: `Securely send ${amount} in crypto.`,
       images: invoice.merchant?.logo_url
         ? [invoice.merchant.logo_url]
-        : ["/og-image-checkout.png"],
+        : undefined,
     },
   };
 }
