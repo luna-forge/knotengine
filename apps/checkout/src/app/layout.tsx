@@ -34,20 +34,11 @@ export const metadata: Metadata = {
     siteName: "KnotEngine Checkout",
     title: "KnotEngine | Secure Crypto Checkout",
     description: "Accept crypto payments directly into your own wallet.",
-    images: [
-      {
-        url: "/og-image-checkout.png",
-        width: 1200,
-        height: 630,
-        alt: "KnotEngine Secure Checkout",
-      },
-    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "KnotEngine | Secure Crypto Checkout",
     description: "Accept crypto payments directly into your own wallet.",
-    images: ["/og-image-checkout.png"],
     creator: "@knotengine",
   },
 };

@@ -5,36 +5,10 @@ import { QRCodeSVG } from "qrcode.react";
 import { Copy, Check, Clock, AlertCircle, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CRYPTO_LOGOS, Currency } from "@qodinger/knot-types";
+import { Invoice } from "@/types/invoice";
 
 interface CheckoutCardProps {
-  invoice: {
-    invoice_id: string;
-    amount_usd: number;
-    crypto_amount: number;
-    crypto_amount_received?: number;
-    crypto_currency: string;
-    pay_address: string;
-    status: string;
-    expires_at: string;
-    fee_usd: number;
-    metadata?: {
-      isTestnet?: boolean;
-      feeResponsibility?: "client" | "merchant";
-    };
-    merchant?: {
-      name: string;
-      logo_url?: string | null;
-      return_url?: string | null;
-      theme?: "light" | "dark" | "system";
-      brand_color?: string;
-      branding_enabled?: boolean;
-      branding_alignment?: "left" | "center";
-      remove_branding?: boolean;
-      bip21_enabled?: boolean;
-      plan?: "starter" | "professional" | "enterprise";
-    };
-    description?: string;
-  };
+  invoice: Invoice;
 }
 
 export function CheckoutCard({ invoice }: CheckoutCardProps) {
@@ -278,10 +252,10 @@ export function CheckoutCard({ invoice }: CheckoutCardProps) {
                 USD
               </p>
               {invoice.metadata?.feeResponsibility === "client" &&
-                invoice.fee_usd > 0 &&
+                (invoice.fee_usd ?? 0) > 0 &&
                 invoice.status !== "partially_paid" && (
                   <p className="text-muted-foreground/60 mt-0.5 text-[9px] font-medium tracking-wide uppercase">
-                    Includes ${invoice.fee_usd.toFixed(2)} Platform Fee
+                    Includes ${(invoice.fee_usd ?? 0).toFixed(2)} Platform Fee
                   </p>
                 )}
             </div>

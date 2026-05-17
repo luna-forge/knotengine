@@ -7,12 +7,18 @@ export interface Invoice {
   pay_address: string;
   status: string;
   expires_at: string;
-  fee_usd: number;
-  tx_hash?: string;
+  fee_usd?: number;
+  fee_crypto?: number;
+  tx_hash?: string | null;
   confirmations?: number;
+  required_confirmations?: number;
+  paid_at?: string | null;
+  created_at?: string;
   metadata?: {
     isTestnet?: boolean;
     feeResponsibility?: "client" | "merchant";
+    network?: string;
+    baseAmountUsd?: number;
   };
   merchant?: {
     name: string;
@@ -23,7 +29,9 @@ export interface Invoice {
     branding_enabled?: boolean;
     remove_branding?: boolean;
     bip21_enabled?: boolean;
+    branding_alignment?: "left" | "center";
     plan?: "starter" | "professional" | "enterprise";
   };
-  description?: string;
+  description?: string | null;
+  checkout_url?: string;
 }

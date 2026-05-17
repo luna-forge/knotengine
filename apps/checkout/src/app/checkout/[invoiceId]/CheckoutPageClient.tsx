@@ -79,7 +79,7 @@ export default function CheckoutPageClient({
       (data: {
         status: string;
         confirmations: number;
-        txHash: string;
+        txHash: string | null;
         cryptoAmountReceived?: number;
       }) => {
         setInvoice((prev) => {

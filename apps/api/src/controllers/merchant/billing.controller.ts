@@ -182,6 +182,11 @@ export const MerchantBillingController = {
       };
       format = (d) =>
         d.toLocaleTimeString([], { hour: "2-digit", hour12: false }) + ":00";
+    } else if (period === "90d") {
+      startTime = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+      groupBy = { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } };
+      format = (d) =>
+        d.toLocaleDateString([], { month: "short", day: "numeric" });
     } else if (period === "30d") {
       startTime = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
       groupBy = { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } };
@@ -214,7 +219,8 @@ export const MerchantBillingController = {
 
     // Fill in zeros for missing periods to ensure smooth chart
     const chartData: { name: string; volume: number }[] = [];
-    const steps = period === "24h" ? 24 : period === "30d" ? 30 : 7;
+    const steps =
+      period === "24h" ? 24 : period === "90d" ? 90 : period === "30d" ? 30 : 7;
     const stepMs = period === "24h" ? 3600000 : 86400000;
 
     for (let i = 0; i < steps; i++) {

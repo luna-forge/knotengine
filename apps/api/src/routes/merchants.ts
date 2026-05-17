@@ -329,7 +329,7 @@ export async function merchantRoutes(app: FastifyInstance) {
       preHandler: requireAuth,
       schema: {
         querystring: z.object({
-          period: z.enum(["24h", "7d", "30d"]).default("7d"),
+          period: z.enum(["24h", "7d", "30d", "90d"]).default("7d"),
         }),
       },
     },
