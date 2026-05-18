@@ -1,10 +1,6 @@
-import { useEffect } from "react";
-import { useForm, Controller } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
+import { useState } from "react";
 import {
   Loader2,
-  Send,
-  Save,
   Copy,
   Check,
   ShieldCheck,
@@ -13,6 +9,12 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  Plus,
+  MoreHorizontal,
+  Trash2,
+  Edit,
+  Play,
+  AlertTriangle,
 } from "lucide-react";
 import { cn, dedent } from "@/lib/utils";
 import {
@@ -25,29 +27,73 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { CodeBlock } from "@/components/ui/code-block";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useWebhooks } from "../hooks/use-webhooks";
 import { useWebhookDeliveries } from "../hooks/use-webhook-deliveries";
-import { webhookSchema, WebhookFormData } from "../../settings/types";
+
+const ALL_EVENTS = [
+  { key: "invoice.confirmed", desc: "Invoice reached required confirmations" },
+  { key: "invoice.mempool_detected", desc: "Transaction seen in mempool" },
+  { key: "invoice.partially_paid", desc: "Partial payment received" },
+  { key: "invoice.overpaid", desc: "Payment exceeded invoice amount" },
+  { key: "invoice.expired", desc: "Invoice expired without payment" },
+  { key: "invoice.failed", desc: "Invoice failed or remained unpaid" },
+];
 
 export function WebhooksTab() {
   const {
-    webhookData,
+    endpoints,
+    loading,
     copied,
-    savingWebhooks,
-    webhookSuccess,
-    testingWebhook,
-    showWebhookSecret,
-    setShowWebhookSecret,
-    rotatingWebhookSecret,
+    creating,
+    testing,
+    deleting,
+    isCreateDialogOpen,
+    setIsCreateDialogOpen,
+    isDeleteDialogOpen,
+    setIsDeleteDialogOpen,
+    deleteTarget,
+    setDeleteTarget,
+    newEndpoint,
+    setNewEndpoint,
+    newEndpointUrl,
+    setNewEndpointUrl,
+    newEndpointDescription,
+    setNewEndpointDescription,
+    newEndpointEvents,
+    setNewEndpointEvents,
+    newEndpointEventMode,
+    setNewEndpointEventMode,
     selectedLanguage,
     setSelectedLanguage,
     copyToClipboard,
-    handleSaveWebhooks,
-    handleRotateWebhookSecret,
-    handleTestWebhook,
+    handleCreateEndpoint,
+    handleSaveEndpoint,
+    handleDeleteEndpoint,
+    handleTestEndpoint,
   } = useWebhooks();
 
   const {
@@ -61,176 +107,421 @@ export function WebhooksTab() {
     setStatusFilter,
   } = useWebhookDeliveries();
 
-  const {
-    register,
-    handleSubmit,
-    control,
-    setValue,
-    reset,
-    formState: { errors, isValid },
-  } = useForm<WebhookFormData>({
-    resolver: zodResolver(webhookSchema),
-    defaultValues: {
-      webhookUrl: webhookData.webhookUrl,
-      webhookEvents: webhookData.webhookEvents,
-    },
-    mode: "onChange",
-  });
+  const [editingEndpoint, setEditingEndpoint] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState<{
+    url: string;
+    description: string;
+    events: string[];
+    eventMode: "all" | "filtered";
+  } | null>(null);
 
-  useEffect(() => {
-    reset({
-      webhookUrl: webhookData.webhookUrl,
-      webhookEvents: webhookData.webhookEvents,
+  const cancelEditing = () => {
+    setEditingEndpoint(null);
+    setEditForm(null);
+  };
+
+  const toggleEvent = (eventKey: string) => {
+    if (!editForm) return;
+    setEditForm((prev) => {
+      if (!prev) return prev;
+      const events = prev.events.includes(eventKey)
+        ? prev.events.filter((e) => e !== eventKey)
+        : [...prev.events, eventKey];
+      return { ...prev, events };
     });
-  }, [
-    reset,
-    webhookData.webhookUrl,
-    JSON.stringify(webhookData.webhookEvents),
-  ]);
+  };
 
-  const onSave = async (data: WebhookFormData) => {
-    // We need to manually call the save handler with current form data
-    // since the hook doesn't know about RHF state yet
-    await handleSaveWebhooks(data);
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return "Never";
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
   };
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold">Endpoint Configuration</h3>
-          <p className="text-muted-foreground text-xs">
-            Set the URL where KnotEngine will send POST requests when events
-            occur.
+        <div>
+          <h3 className="text-lg font-semibold">Webhook Endpoints</h3>
+          <p className="text-muted-foreground text-sm">
+            Manage destinations for event notifications.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1.5 text-[10px] font-bold tracking-wider uppercase"
-            onClick={handleTestWebhook}
-            disabled={!webhookData.webhookUrl || testingWebhook}
-          >
-            {testingWebhook ? (
-              <Loader2 className="size-3 animate-spin" />
-            ) : (
-              <Send className="size-3" />
-            )}
-            Test
-          </Button>
-          <Button
-            size="sm"
-            className="h-8 gap-1.5 text-[10px] font-bold tracking-wider uppercase"
-            onClick={handleSubmit(onSave)}
-            disabled={savingWebhooks || !isValid}
-          >
-            {savingWebhooks ? (
-              <Loader2 className="size-3 animate-spin" />
-            ) : (
-              <Save className="size-3" />
-            )}
-            {webhookSuccess ? "Saved" : "Save Changes"}
-          </Button>
-        </div>
+        <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <Plus className="mr-2 size-4" />
+          Add Endpoint
+        </Button>
       </div>
 
-      <Card className="border shadow-sm">
-        <CardContent className="space-y-6 pt-6 pb-6">
-          <div className="grid gap-2">
-            <Label
-              htmlFor="webhookUrl"
-              className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase"
-            >
-              Endpoint URL
-            </Label>
-            <Input
-              id="webhookUrl"
-              {...register("webhookUrl", {
-                onBlur: (e) => {
-                  const val = e.target.value.trim();
-                  if (
-                    val &&
-                    !val.startsWith("http://") &&
-                    !val.startsWith("https://") &&
-                    !val.startsWith("/")
-                  ) {
-                    setValue("webhookUrl", `https://${val}`, {
-                      shouldDirty: true,
-                      shouldValidate: true,
-                    });
-                  }
-                },
-              })}
-              placeholder="https://api.myapp.com/webhooks"
-              className={cn(
-                "bg-background/50 font-mono text-xs focus-visible:ring-emerald-500/30",
-                errors.webhookUrl &&
-                  "border-destructive focus-visible:ring-destructive",
-              )}
-            />
-            {errors.webhookUrl && (
-              <p className="text-destructive text-[10px] font-medium">
-                {errors.webhookUrl.message}
-              </p>
+      <Card>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="text-muted-foreground py-8 text-center">
+              Loading endpoints...
+            </div>
+          ) : endpoints.length === 0 ? (
+            <div className="text-muted-foreground py-8 text-center">
+              No webhook endpoints yet. Add one to receive event notifications.
+            </div>
+          ) : (
+            <div className="border-border/40 overflow-hidden rounded-lg border shadow-sm">
+              <Table>
+                <TableHeader className="bg-muted/20">
+                  <TableRow className="border-border/30 h-12 hover:bg-transparent">
+                    <TableHead className="pl-6 text-[10px] font-bold tracking-wider uppercase">
+                      Endpoint
+                    </TableHead>
+                    <TableHead className="text-[10px] font-bold tracking-wider uppercase">
+                      Events
+                    </TableHead>
+                    <TableHead className="text-[10px] font-bold tracking-wider uppercase">
+                      Last Delivery
+                    </TableHead>
+                    <TableHead className="text-[10px] font-bold tracking-wider uppercase">
+                      Status
+                    </TableHead>
+                    <TableHead className="pr-6 text-right text-[10px] font-bold tracking-wider uppercase">
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {endpoints.map((ep) => (
+                    <TableRow key={ep.id}>
+                      <TableCell className="pl-6">
+                        <div>
+                          <div className="text-sm font-medium">
+                            {ep.description || "Unnamed"}
+                          </div>
+                          <div className="text-muted-foreground max-w-xs truncate font-mono text-xs">
+                            {ep.url}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs">
+                          {ep.eventMode === "all"
+                            ? "All Events"
+                            : `${ep.events.length} events`}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-muted-foreground text-xs">
+                          {ep.lastSuccessAt ? (
+                            <span className="text-emerald-500">
+                              <CheckCircle2 className="mr-1 inline size-3" />
+                              {formatDate(ep.lastSuccessAt)}
+                            </span>
+                          ) : ep.lastFailureAt ? (
+                            <span className="text-red-500">
+                              <XCircle className="mr-1 inline size-3" />
+                              {formatDate(ep.lastFailureAt)}
+                            </span>
+                          ) : (
+                            "Never"
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {ep.isActive ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500">
+                            <span className="size-1.5 rounded-full bg-emerald-500" />
+                            Active
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-red-500">
+                            <span className="size-1.5 rounded-full bg-red-500" />
+                            Disabled
+                          </span>
+                        )}
+                        {ep.consecutiveFailures > 0 && (
+                          <div className="text-muted-foreground text-[10px]">
+                            {ep.consecutiveFailures} failures
+                          </div>
+                        )}
+                      </TableCell>
+                      <TableCell className="pr-6 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuItem
+                              className="text-xs"
+                              onClick={() => handleTestEndpoint(ep.id)}
+                              disabled={testing === ep.id}
+                            >
+                              {testing === ep.id ? (
+                                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Play className="mr-2 h-3.5 w-3.5" />
+                              )}
+                              Test endpoint
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-xs"
+                              onClick={() => {
+                                setEditingEndpoint(ep.id);
+                                setEditForm({
+                                  url: ep.url,
+                                  description: ep.description || "",
+                                  events: ep.events,
+                                  eventMode: ep.eventMode,
+                                });
+                              }}
+                            >
+                              <Edit className="mr-2 h-3.5 w-3.5" />
+                              Edit
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive text-xs"
+                              onClick={() => {
+                                setDeleteTarget(ep);
+                                setIsDeleteDialogOpen(true);
+                              }}
+                            >
+                              <Trash2 className="mr-2 h-3.5 w-3.5" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Edit Endpoint Inline */}
+      {editingEndpoint && editForm && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Edit Endpoint</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-2">
+              <Label>URL</Label>
+              <Input
+                value={editForm.url}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, url: e.target.value })
+                }
+                placeholder="https://api.myapp.com/webhooks"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Description (optional)</Label>
+              <Input
+                value={editForm.description}
+                onChange={(e) =>
+                  setEditForm({ ...editForm, description: e.target.value })
+                }
+                placeholder="Production server"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>Event Mode</Label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    checked={editForm.eventMode === "all"}
+                    onChange={() =>
+                      setEditForm({ ...editForm, eventMode: "all" })
+                    }
+                  />
+                  All Events
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    checked={editForm.eventMode === "filtered"}
+                    onChange={() =>
+                      setEditForm({ ...editForm, eventMode: "filtered" })
+                    }
+                  />
+                  Filtered
+                </label>
+              </div>
+            </div>
+            {editForm.eventMode === "filtered" && (
+              <div className="grid gap-2">
+                <Label>Events</Label>
+                <div className="space-y-1">
+                  {ALL_EVENTS.map((item) => (
+                    <label
+                      key={item.key}
+                      className="flex items-center gap-2 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={editForm.events.includes(item.key)}
+                        onChange={() => toggleEvent(item.key)}
+                      />
+                      <span>{item.key}</span>
+                      <span className="text-muted-foreground text-xs">
+                        {item.desc}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button onClick={cancelEditing} variant="outline">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  handleSaveEndpoint(editingEndpoint, editForm);
+                  cancelEditing();
+                }}
+              >
+                Save Changes
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Create Endpoint Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Webhook Endpoint</DialogTitle>
+            <DialogDescription>
+              Enter the URL where KnotEngine should send event notifications.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>URL</Label>
+              <Input
+                value={newEndpointUrl}
+                onChange={(e) => setNewEndpointUrl(e.target.value)}
+                placeholder="https://api.myapp.com/webhooks"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description (optional)</Label>
+              <Input
+                value={newEndpointDescription}
+                onChange={(e) => setNewEndpointDescription(e.target.value)}
+                placeholder="Production server"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Event Mode</Label>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    checked={newEndpointEventMode === "all"}
+                    onChange={() => setNewEndpointEventMode("all")}
+                  />
+                  All Events
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="radio"
+                    checked={newEndpointEventMode === "filtered"}
+                    onChange={() => setNewEndpointEventMode("filtered")}
+                  />
+                  Filtered
+                </label>
+              </div>
+            </div>
+            {newEndpointEventMode === "filtered" && (
+              <div className="space-y-2">
+                <Label>Events</Label>
+                <div className="space-y-1">
+                  {ALL_EVENTS.map((item) => (
+                    <label
+                      key={item.key}
+                      className="flex items-center gap-2 text-sm"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={newEndpointEvents.includes(item.key)}
+                        onChange={() =>
+                          setNewEndpointEvents((prev) =>
+                            prev.includes(item.key)
+                              ? prev.filter((e) => e !== item.key)
+                              : [...prev, item.key],
+                          )
+                        }
+                      />
+                      <span>{item.key}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsCreateDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleCreateEndpoint}
+              disabled={creating || !newEndpointUrl}
+            >
+              {creating ? "Creating..." : "Add Endpoint"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-          <div className="grid gap-2">
-            <div className="flex items-center justify-between">
-              <Label
-                htmlFor="secret"
-                className="text-muted-foreground text-[10px] font-bold tracking-wider uppercase"
-              >
-                Signing Secret
-              </Label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleRotateWebhookSecret}
-                disabled={rotatingWebhookSecret}
-                className="text-destructive hover:bg-destructive/5 hover:text-destructive h-6 text-[9px] font-bold tracking-wider uppercase"
-              >
-                {rotatingWebhookSecret ? "Rotating..." : "Rotate Secret"}
-              </Button>
-            </div>
-            <div className="relative flex items-center gap-2">
-              <div className="relative flex-1">
-                <Input
-                  id="secret"
-                  type={showWebhookSecret ? "text" : "password"}
-                  value={webhookData.webhookSecret}
-                  readOnly
-                  className="bg-background/50 pr-16 font-mono text-xs focus-visible:ring-0"
-                  placeholder="knot_wh_********************"
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-muted-foreground hover:text-foreground absolute top-0 right-0 h-full text-[10px] font-bold tracking-wider uppercase hover:bg-transparent"
-                  onClick={() => setShowWebhookSecret(!showWebhookSecret)}
-                  disabled={!webhookData.webhookSecret}
-                >
-                  {showWebhookSecret ? "Hide" : "Reveal"}
-                </Button>
-              </div>
-              <Button
-                variant="outline"
-                size="icon"
-                className="h-9 w-9 shrink-0"
-                onClick={() =>
-                  copyToClipboard(webhookData.webhookSecret, "secret")
-                }
-              >
-                {copied === "secret" ? (
-                  <Check className="size-4 text-emerald-500" />
-                ) : (
-                  <Copy className="text-muted-foreground size-4" />
-                )}
-              </Button>
-            </div>
+      {/* New Endpoint Secret Dialog */}
+      <Dialog
+        open={!!newEndpoint}
+        onOpenChange={(open) => !open && setNewEndpoint(null)}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Webhook Endpoint Created</DialogTitle>
+            <DialogDescription>
+              Copy your signing secret now. You will not be able to see it
+              again.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="my-4 flex items-center space-x-2">
+            <Input
+              readOnly
+              value={newEndpoint?.secret || ""}
+              className="font-mono text-sm"
+            />
+            <Button
+              size="icon"
+              variant="secondary"
+              onClick={() =>
+                newEndpoint && copyToClipboard(newEndpoint.secret, "wh-secret")
+              }
+            >
+              {copied === "wh-secret" ? (
+                <Check className="h-4 w-4" />
+              ) : (
+                <Copy className="h-4 w-4" />
+              )}
+            </Button>
           </div>
-
           <div className="rounded-lg border border-emerald-500/10 bg-emerald-500/5 p-3">
             <div className="mb-1.5 flex items-center gap-2">
               <ShieldCheck className="size-3.5 text-emerald-500" />
@@ -243,130 +534,53 @@ export function WebhooksTab() {
               <code className="font-mono text-emerald-600">
                 x-knot-signature
               </code>{" "}
-              header using your secret before processing webhooks to ensure the
-              source is authentic.
+              header using your secret before processing webhooks.
             </p>
           </div>
-        </CardContent>
-      </Card>
+          <DialogFooter>
+            <Button type="button" onClick={() => setNewEndpoint(null)}>
+              Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <Card className="border shadow-sm">
-        <CardHeader className="px-6 pt-6 pb-4">
-          <CardTitle className="text-sm font-semibold">
-            Event Subscriptions
-          </CardTitle>
-          <CardDescription className="text-xs">
-            Select the specific events you want to receive notifications for.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-6 pt-0 pb-6">
-          <Controller
-            name="webhookEvents"
-            control={control}
-            render={({ field }) => (
-              <div className="mt-2 grid grid-cols-1 gap-1.5">
-                {[
-                  {
-                    id: "e-confirmed",
-                    key: "invoice.confirmed",
-                    desc: "Fired when an invoice reaches required confirmations.",
-                  },
-                  {
-                    id: "e-mempool",
-                    key: "invoice.mempool_detected",
-                    desc: "Fired immediately when a transaction is seen in mempool.",
-                  },
-                  {
-                    id: "e-failed",
-                    key: "invoice.failed",
-                    desc: "Fired when an invoice expires or remains unpaid.",
-                  },
-                ].map((item) => (
-                  <div
-                    key={item.id}
-                    className="hover:border-border/50 hover:bg-muted/30 group flex items-start gap-3 rounded-lg border border-transparent p-2.5 transition-all"
-                  >
-                    <Checkbox
-                      id={item.id}
-                      checked={field.value.includes(item.key)}
-                      onCheckedChange={(checked) => {
-                        const events = field.value;
-                        if (checked) {
-                          field.onChange([...events, item.key]);
-                        } else {
-                          field.onChange(events.filter((e) => e !== item.key));
-                        }
-                      }}
-                      className="mt-0.5"
-                    />
-                    <div className="grid gap-0.5 leading-none">
-                      <Label
-                        htmlFor={item.id}
-                        className="group-hover:text-primary cursor-pointer text-xs font-bold transition-colors"
-                      >
-                        {item.key}
-                      </Label>
-                      <p className="text-muted-foreground text-[10px] font-medium">
-                        {item.desc}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          />
-        </CardContent>
-      </Card>
+      {/* Delete Endpoint Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-amber-500" />
+              Delete Endpoint
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure? The endpoint <strong>{deleteTarget?.url}</strong>{" "}
+              will stop receiving webhook events immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteEndpoint}
+              disabled={deleting === deleteTarget?.id}
+            >
+              {deleting === deleteTarget?.id && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Delete Endpoint
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
+      {/* Implementation Guide */}
       <Card className="relative w-full overflow-hidden border bg-[#0c0c0c] text-slate-50 shadow-sm">
-        <CardContent className="p-8">
-          <div className="flex flex-col gap-6">
-            <div className="space-y-2">
-              <h3 className="text-sm font-bold text-slate-50">
-                Payload preview
-              </h3>
-              <p className="text-xs text-slate-400">
-                Sample HTTP request structure sent to your server.
-              </p>
-            </div>
-            <CodeBlock
-              language="json"
-              className="h-100 w-full"
-              code={dedent`
-                POST /webhooks HTTP/1.1
-                x-knot-signature: 8f...2a
-                x-knot-event: invoice.confirmed
-                Content-Type: application/json
-
-                {
-                  "id": "evt_test_1234567890",
-                  "event": "invoice.confirmed",
-                  "created": 1700000000,
-                  "invoice_id": "inv_test_1234567890",
-                  "status": "confirmed",
-                  "amount": {
-                    "usd": 100.0,
-                    "crypto": 0.0015,
-                    "currency": "BTC",
-                    "fee_usd": 1.0
-                  },
-                  "payment": {
-                    "address": "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh",
-                    "tx_hash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                    "confirmations": 2,
-                    "paid_at": "2024-02-21T01:52:45.000Z"
-                  },
-                  "metadata": {
-                    "is_test": true
-                  }
-                }
-              `}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="relative mt-6 overflow-hidden border bg-[#0c0c0c] text-slate-50 shadow-sm">
         <CardContent className="p-8">
           <div className="grid grid-cols-1 gap-12 lg:grid-cols-2">
             <div className="flex flex-col gap-10">
@@ -391,9 +605,7 @@ export function WebhooksTab() {
                   <code className="relative z-10 mx-1 rounded bg-white/5 px-1 py-0.5 text-xs text-slate-300 select-none">
                     HMAC-SHA256
                   </code>{" "}
-                  hash of the raw request body using your signing secret. We
-                  recommend using a timing-safe comparison to prevent
-                  side-channel attacks.
+                  hash of the raw request body using your signing secret.
                 </p>
                 <div className="flex pt-2">
                   <Button
@@ -401,7 +613,7 @@ export function WebhooksTab() {
                     className="h-auto p-0 text-xs text-slate-300 hover:text-white"
                     asChild
                   >
-                    <a href="#">
+                    <a href="/docs">
                       View docs <ExternalLink className="ml-1.5 size-3" />
                     </a>
                   </Button>
@@ -461,7 +673,7 @@ export function WebhooksTab() {
 
                         // 1. Get signature & raw body
                         const signature = req.headers['x-knot-signature'];
-                        const rawBody = req.rawBody; // Required for HMAC!
+                        const rawBody = req.rawBody;
 
                         // 2. Generate expected HMAC-SHA256 signature
                         const expected = crypto
@@ -469,7 +681,7 @@ export function WebhooksTab() {
                           .update(rawBody)
                           .digest('hex');
 
-                        // 3. Timing-safe comparison to prevent side-channel attacks
+                        // 3. Timing-safe comparison
                         const sigBuf = Buffer.from(signature, 'hex');
                         const expBuf = Buffer.from(expected, 'hex');
 

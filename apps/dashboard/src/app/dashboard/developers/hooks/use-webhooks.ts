@@ -1,62 +1,78 @@
 "use client";
 
-import { useState } from "react";
-import useSWR from "swr";
+import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
 import { api } from "@/lib/api";
-import { fetcher, swrKeys } from "@/lib/swr";
 
-interface MerchantResponse {
-  webhookUrl?: string;
-  webhookSecret?: string;
-  webhookEvents?: string[];
-  [key: string]: unknown;
-}
+type WebhookEndpoint = {
+  id: string;
+  endpointId: string;
+  url: string;
+  description?: string;
+  events: string[];
+  eventMode: "all" | "filtered";
+  isActive: boolean;
+  lastSuccessAt?: string;
+  lastFailureAt?: string;
+  consecutiveFailures: number;
+  disabledAt?: string;
+  createdAt: string;
+};
+
+const DEFAULT_EVENTS = [
+  "invoice.confirmed",
+  "invoice.mempool_detected",
+  "invoice.partially_paid",
+  "invoice.overpaid",
+  "invoice.expired",
+  "invoice.failed",
+];
 
 export function useWebhooks() {
+  const { data: session } = useSession();
+  const merchantId = (session?.user as { merchantId?: string })?.merchantId;
+  const [endpoints, setEndpoints] = useState<WebhookEndpoint[]>([]);
+  const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<string | null>(null);
-  const [savingWebhooks, setSavingWebhooks] = useState(false);
-  const [webhookSuccess, setWebhookSuccess] = useState(false);
-  const [testingWebhook, setTestingWebhook] = useState(false);
-  const [showWebhookSecret, setShowWebhookSecret] = useState(false);
-  const [rotatingWebhookSecret, setRotatingWebhookSecret] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<WebhookEndpoint | null>(
+    null,
+  );
+  const [newEndpoint, setNewEndpoint] = useState<{
+    secret: string;
+    endpointId: string;
+  } | null>(null);
+  const [newEndpointUrl, setNewEndpointUrl] = useState("");
+  const [newEndpointDescription, setNewEndpointDescription] = useState("");
+  const [newEndpointEvents, setNewEndpointEvents] =
+    useState<string[]>(DEFAULT_EVENTS);
+  const [newEndpointEventMode, setNewEndpointEventMode] = useState<
+    "all" | "filtered"
+  >("filtered");
   const [selectedLanguage, setSelectedLanguage] = useState("nodejs-sdk");
 
-  const { data: merchantData, mutate: mutateMerchant } =
-    useSWR<MerchantResponse>(swrKeys.merchant, fetcher, {
-      revalidateOnFocus: false,
-    });
-
-  const webhookData = {
-    webhookUrl: merchantData?.webhookUrl || "",
-    webhookSecret: merchantData?.webhookSecret || "",
-    webhookEvents: merchantData?.webhookEvents || [
-      "invoice.confirmed",
-      "invoice.mempool_detected",
-      "invoice.failed",
-    ],
-  };
-
-  // Local state for form edits (so typing doesn't trigger SWR re-renders)
-  const [localWebhookData, setLocalWebhookData] = useState<{
-    webhookUrl: string;
-    webhookSecret: string;
-    webhookEvents: string[];
-  } | null>(null);
-
-  // Use local edits if available, otherwise use SWR data
-  const activeWebhookData = localWebhookData ?? webhookData;
-
-  const setWebhookData = (
-    updater:
-      | typeof activeWebhookData
-      | ((prev: typeof activeWebhookData) => typeof activeWebhookData),
-  ) => {
-    if (typeof updater === "function") {
-      setLocalWebhookData((prev) => updater(prev ?? webhookData));
-    } else {
-      setLocalWebhookData(updater);
+  const fetchEndpoints = async () => {
+    if (!merchantId) return;
+    try {
+      const res = await api.get(
+        `/v1/merchants/${merchantId}/webhooks/endpoints`,
+      );
+      setEndpoints(res.data.endpoints || []);
+    } catch (err) {
+      console.error("Failed to fetch webhook endpoints:", err);
+    } finally {
+      setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchEndpoints();
+  }, [merchantId]);
 
   const copyToClipboard = (text: string, id?: string) => {
     navigator.clipboard.writeText(text);
@@ -64,68 +80,117 @@ export function useWebhooks() {
     setTimeout(() => setCopied(null), 2000);
   };
 
-  const handleSaveWebhooks = async (data?: Record<string, unknown>) => {
-    setSavingWebhooks(true);
-    setWebhookSuccess(false);
+  const handleCreateEndpoint = async () => {
+    if (!merchantId || !newEndpointUrl) return;
+    setCreating(true);
     try {
-      const payload = data || {
-        webhookUrl: activeWebhookData.webhookUrl,
-        webhookEvents: activeWebhookData.webhookEvents,
-      };
-      await api.patch("/v1/merchants/me", payload);
-      setLocalWebhookData(null); // Clear local edits, SWR will have fresh data
-      await mutateMerchant();
-      setWebhookSuccess(true);
-      setTimeout(() => setWebhookSuccess(false), 3000);
+      const res = await api.post(
+        `/v1/merchants/${merchantId}/webhooks/endpoints`,
+        {
+          url: newEndpointUrl,
+          description: newEndpointDescription || undefined,
+          events: newEndpointEvents,
+          eventMode: newEndpointEventMode,
+        },
+      );
+      setNewEndpoint({
+        secret: res.data.endpoint.secret,
+        endpointId: res.data.endpoint.endpointId,
+      });
+      setIsCreateDialogOpen(false);
+      setNewEndpointUrl("");
+      setNewEndpointDescription("");
+      setNewEndpointEvents(DEFAULT_EVENTS);
+      setNewEndpointEventMode("filtered");
+      await fetchEndpoints();
     } catch (err) {
-      console.error("Failed to save settings", err);
+      console.error("Failed to create webhook endpoint:", err);
     } finally {
-      setSavingWebhooks(false);
+      setCreating(false);
     }
   };
 
-  const handleRotateWebhookSecret = async () => {
-    setRotatingWebhookSecret(true);
+  const handleSaveEndpoint = async (
+    endpointId: string,
+    data: Record<string, unknown>,
+  ) => {
+    if (!merchantId) return;
+    setSaving(true);
     try {
-      await api.post("/v1/merchants/me/keys/webhook", {});
-      await mutateMerchant();
-      setLocalWebhookData(null);
-      setWebhookSuccess(true);
-      setTimeout(() => setWebhookSuccess(false), 3000);
+      await api.patch(
+        `/v1/merchants/${merchantId}/webhooks/endpoints/${endpointId}`,
+        data,
+      );
+      await fetchEndpoints();
     } catch (err) {
-      console.error("Failed to rotate webhook secret", err);
+      console.error("Failed to save webhook endpoint:", err);
     } finally {
-      setRotatingWebhookSecret(false);
+      setSaving(false);
     }
   };
 
-  const handleTestWebhook = async () => {
-    setTestingWebhook(true);
+  const handleDeleteEndpoint = async () => {
+    if (!merchantId || !deleteTarget) return;
+    setDeleting(deleteTarget.id);
     try {
-      await api.post("/v1/merchants/me/webhooks/test", {});
+      await api.delete(
+        `/v1/merchants/${merchantId}/webhooks/endpoints/${deleteTarget.id}`,
+      );
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
+      await fetchEndpoints();
     } catch (err) {
-      console.error("Failed to test webhook", err);
+      console.error("Failed to delete webhook endpoint:", err);
     } finally {
-      setTestingWebhook(false);
+      setDeleting(null);
+    }
+  };
+
+  const handleTestEndpoint = async (endpointId: string) => {
+    if (!merchantId) return;
+    setTesting(endpointId);
+    try {
+      await api.post(
+        `/v1/merchants/${merchantId}/webhooks/endpoints/${endpointId}/test`,
+      );
+    } catch (err) {
+      console.error("Failed to test webhook endpoint:", err);
+    } finally {
+      setTesting(null);
     }
   };
 
   return {
-    webhookData: activeWebhookData,
-    setWebhookData,
+    endpoints,
+    loading,
     copied,
-    savingWebhooks,
-    webhookSuccess,
-    testingWebhook,
-    showWebhookSecret,
-    setShowWebhookSecret,
-    rotatingWebhookSecret,
+    creating,
+    saving,
+    testing,
+    deleting,
+    isCreateDialogOpen,
+    setIsCreateDialogOpen,
+    isDeleteDialogOpen,
+    setIsDeleteDialogOpen,
+    deleteTarget,
+    setDeleteTarget,
+    newEndpoint,
+    setNewEndpoint,
+    newEndpointUrl,
+    setNewEndpointUrl,
+    newEndpointDescription,
+    setNewEndpointDescription,
+    newEndpointEvents,
+    setNewEndpointEvents,
+    newEndpointEventMode,
+    setNewEndpointEventMode,
     selectedLanguage,
     setSelectedLanguage,
     copyToClipboard,
-    handleSaveWebhooks,
-    handleRotateWebhookSecret,
-    handleTestWebhook,
-    fetchMerchantConfig: mutateMerchant,
+    handleCreateEndpoint,
+    handleSaveEndpoint,
+    handleDeleteEndpoint,
+    handleTestEndpoint,
+    fetchEndpoints,
   };
 }
