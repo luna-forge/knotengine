@@ -47,13 +47,17 @@ const possibleEnvPaths = [
   path.resolve(__dirname, `../../../${envFileName}`), // Monorepo root from built dist/
   path.resolve(process.cwd(), envFileName), // Current working directory
   path.resolve(process.cwd(), `../../${envFileName}`), // Two levels up from CWD
+  // Fallback to .env.local
+  path.resolve(__dirname, "../../../.env.local"),
+  path.resolve(process.cwd(), ".env.local"),
+  path.resolve(process.cwd(), "../../.env.local"),
 ];
 
 let envLoaded = false;
 for (const envPath of possibleEnvPaths) {
   if (fs.existsSync(envPath)) {
     dotenv.config({ path: envPath });
-    console.log(`✅ Loaded ${envFileName} from ${envPath}`);
+    console.log(`✅ Loaded ${path.basename(envPath)} from ${envPath}`);
     envLoaded = true;
     break;
   }
