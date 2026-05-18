@@ -4,6 +4,7 @@
 // ============================================================
 
 export interface PlanLimits {
+  monthlyPrice: number;
   maxTeamSeats: number;
   maxApiKeys: number;
   maxWebhookEndpoints: number;
@@ -16,14 +17,24 @@ export interface PlanLimits {
   prioritySupport: boolean;
   ssoEnabled: boolean;
   advancedAnalytics: boolean;
+  dedicatedInfrastructure: boolean;
+  slaGuarantee: string | null;
+  dedicatedAccountManager: boolean;
   apiRateLimit: {
     max: number;
     windowMs: number;
   };
 }
 
+export const PLAN_COSTS: Record<string, number> = {
+  starter: 0,
+  professional: 39,
+  enterprise: 149,
+};
+
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
   starter: {
+    monthlyPrice: 0,
     maxTeamSeats: 2,
     maxApiKeys: 1,
     maxWebhookEndpoints: 1,
@@ -36,12 +47,16 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     prioritySupport: false,
     ssoEnabled: false,
     advancedAnalytics: false,
+    dedicatedInfrastructure: false,
+    slaGuarantee: null,
+    dedicatedAccountManager: false,
     apiRateLimit: { max: 1000, windowMs: 60 * 60 * 1000 },
   },
   professional: {
+    monthlyPrice: 39,
     maxTeamSeats: 10,
     maxApiKeys: 5,
-    maxWebhookEndpoints: 3,
+    maxWebhookEndpoints: 5,
     maxInvoicesPerMonth: 1000,
     maxMonthlyVolume: 100000,
     supportedCurrencies: ["BTC", "LTC", "ETH", "USDT_ERC20", "USDT_POLYGON"],
@@ -51,9 +66,13 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     prioritySupport: true,
     ssoEnabled: false,
     advancedAnalytics: true,
+    dedicatedInfrastructure: false,
+    slaGuarantee: null,
+    dedicatedAccountManager: false,
     apiRateLimit: { max: 5000, windowMs: 60 * 60 * 1000 },
   },
   enterprise: {
+    monthlyPrice: 149,
     maxTeamSeats: Infinity,
     maxApiKeys: Infinity,
     maxWebhookEndpoints: Infinity,
@@ -75,6 +94,9 @@ export const PLAN_LIMITS: Record<string, PlanLimits> = {
     prioritySupport: true,
     ssoEnabled: true,
     advancedAnalytics: true,
+    dedicatedInfrastructure: true,
+    slaGuarantee: "99.9%",
+    dedicatedAccountManager: true,
     apiRateLimit: { max: 10000, windowMs: 60 * 60 * 1000 },
   },
 };
