@@ -31,7 +31,7 @@ export function ProratedInfo({
               {daysRemaining && <> for {daysRemaining} days</>}
             </p>
             <p className="text-muted-foreground mt-1">
-              Full billing ($29/mo) starts next month on the 1st.
+              Full billing ($39/mo) starts next month on the 1st.
             </p>
           </div>
         </div>

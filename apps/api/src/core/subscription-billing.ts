@@ -5,6 +5,9 @@ import {
   IUser,
   mongoose,
 } from "@qodinger/knot-database";
+import { PLAN_COSTS } from "@qodinger/knot-types";
+import { isSelfHosted } from "./self-hosted-mode.js";
+import { AuditLogger } from "./audit-logger.js";
 import { NotificationService } from "../infra/notification-service.js";
 
 /**
@@ -44,6 +47,13 @@ export class SubscriptionBilling {
     console.log("🔄 Starting monthly subscription billing...");
 
     try {
+      if (isSelfHosted()) {
+        console.log(
+          "🏠 Self-hosted mode detected — skipping subscription billing",
+        );
+        return results;
+      }
+
       // Get all merchants on paid plans
       const paidMerchants = await Merchant.find({
         plan: { $in: ["professional", "enterprise"] },
@@ -73,7 +83,7 @@ export class SubscriptionBilling {
           await new Promise((resolve) => setTimeout(resolve, 100));
         } catch (error) {
           console.error(
-            "❌ Billing failed for merchant ${merchant.merchantId}:",
+            `❌ Billing failed for merchant ${merchant.merchantId}:`,
             error,
           );
           results.failed++;
@@ -107,13 +117,8 @@ export class SubscriptionBilling {
     reason?: string;
     daysRemaining?: number;
   }> {
-    const planCosts = {
-      professional: 39,
-      enterprise: 149,
-    };
-
     const plan = merchant.plan as "professional" | "enterprise";
-    const cost = planCosts[plan];
+    const cost = PLAN_COSTS[plan] ?? 0;
     const user = merchant.userId;
 
     // Helper function to check if userId is populated as IUser
@@ -128,7 +133,7 @@ export class SubscriptionBilling {
     // Check if user exists and is populated
     if (!user || !isPopulatedUser(user) || user.creditBalance < cost) {
       console.log(
-        "💸 Insufficient balance for ${merchant.merchantId} (${plan}) - checking grace period",
+        `💸 Insufficient balance for ${merchant.merchantId} (${plan}) - checking grace period`,
       );
 
       // Check if already in grace period
@@ -137,7 +142,7 @@ export class SubscriptionBilling {
       // First time insufficient balance - start grace period and send warning
       if (!merchant.gracePeriodStarted) {
         console.log(
-          "⏰ Starting grace period for ${merchant.merchantId} - ${gracePeriodDays} days until downgrade",
+          `⏰ Starting grace period for ${merchant.merchantId} - ${gracePeriodDays} days until downgrade`,
         );
 
         await Merchant.findByIdAndUpdate(merchant._id, {
@@ -174,7 +179,7 @@ export class SubscriptionBilling {
         );
 
         console.log(
-          "⏳ Grace period active for ${merchant.merchantId} - ${daysRemaining} days remaining",
+          `⏳ Grace period active for ${merchant.merchantId} - ${daysRemaining} days remaining`,
         );
 
         // Send reminder if 3 days or less remaining
@@ -199,7 +204,7 @@ export class SubscriptionBilling {
 
       // Grace period expired - downgrade now
       console.log(
-        "⏰ Grace period expired for ${merchant.merchantId} - downgrading to starter",
+        `⏰ Grace period expired for ${merchant.merchantId} - downgrading to starter`,
       );
 
       await Merchant.findByIdAndUpdate(merchant._id, {
@@ -210,6 +215,20 @@ export class SubscriptionBilling {
           gracePeriodEnds: null,
         },
       });
+
+      // Audit log
+      await AuditLogger.billing(
+        user?._id?.toString() || "",
+        "plan_changed",
+        undefined,
+        {
+          merchantId: merchant._id.toString(),
+          merchantIdReadable: merchant.merchantId,
+          previousPlan: plan,
+          newPlan: "starter",
+          reason: "grace_period_expired",
+        },
+      );
 
       // Send final notification
       await NotificationService.create({
@@ -238,6 +257,19 @@ export class SubscriptionBilling {
       $set: { planStartedAt: new Date() },
     });
 
+    // Audit log
+    await AuditLogger.billing(
+      user._id.toString(),
+      "subscription_charged",
+      undefined,
+      {
+        merchantId: merchant._id.toString(),
+        merchantIdReadable: merchant.merchantId,
+        plan,
+        amountCharged: cost,
+      },
+    );
+
     // Send success notification
     await NotificationService.create({
       merchantId: merchant._id.toString(),
@@ -248,7 +280,7 @@ export class SubscriptionBilling {
     });
 
     console.log(
-      "💳 Charged ${merchant.merchantId} $${cost.toFixed(2)} for ${plan} plan",
+      `💳 Charged ${merchant.merchantId} $${cost.toFixed(2)} for ${plan} plan`,
     );
 
     return {
@@ -276,15 +308,9 @@ export class SubscriptionBilling {
       throw new Error("Merchant not found");
     }
 
-    const planCosts = {
-      starter: 0,
-      professional: 39,
-      enterprise: 149,
-    };
-
     const planStartedAt = merchant.planStartedAt || new Date();
     const nextBillingDate = new Date();
-    nextBillingDate.setDate(1); // Always bill on the 1st
+    nextBillingDate.setDate(1);
     if (nextBillingDate <= new Date()) {
       nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
     }
@@ -293,7 +319,6 @@ export class SubscriptionBilling {
       (nextBillingDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24),
     );
 
-    // Check if this month was prorated
     const isProratedThisMonth = !!(
       merchant.lastProratedDate &&
       merchant.lastProratedDate.getMonth() === new Date().getMonth() &&
@@ -304,7 +329,7 @@ export class SubscriptionBilling {
       plan: merchant.plan,
       planStartedAt,
       nextBillingDate,
-      monthlyCost: planCosts[merchant.plan as keyof typeof planCosts],
+      monthlyCost: PLAN_COSTS[merchant.plan] ?? 0,
       daysUntilBilling: Math.max(0, daysUntilBilling),
       isProratedThisMonth,
       proratedAmount: merchant.lastProratedAmount || undefined,

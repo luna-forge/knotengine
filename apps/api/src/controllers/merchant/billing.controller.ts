@@ -1,5 +1,8 @@
 import { FastifyReply } from "fastify";
 import { Invoice, Merchant, TopUpClaim, User } from "@qodinger/knot-database";
+import { PLAN_COSTS } from "@qodinger/knot-types";
+import { AuditLogger } from "../../core/audit-logger.js";
+import { isSelfHosted } from "../../core/self-hosted-mode.js";
 import { NotificationService } from "../../infra/notification-service.js";
 import { PriceOracle } from "../../infra/price-feed.js";
 import { TxVerifier } from "../../infra/tx-verifier.js";
@@ -9,6 +12,14 @@ export const MerchantBillingController = {
     const merchant = request.merchant;
     if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
+    if (isSelfHosted()) {
+      return reply.code(403).send({
+        error:
+          "Plan changes are disabled in self-hosted mode. All features are unlocked automatically.",
+        selfHosted: true,
+      });
+    }
+
     const { plan: newPlan } = request.body;
     const currentPlan = merchant.plan || "starter";
 
@@ -16,15 +27,8 @@ export const MerchantBillingController = {
       return reply.code(400).send({ error: "Already on this plan." });
     }
 
-    const PLAN_COSTS = {
-      starter: 0,
-      professional: 39,
-      enterprise: 149,
-    };
-
-    const cost = PLAN_COSTS[newPlan as keyof typeof PLAN_COSTS];
-    const currentPlanCost =
-      PLAN_COSTS[currentPlan as keyof typeof PLAN_COSTS] || 0;
+    const cost = PLAN_COSTS[newPlan] ?? 0;
+    const currentPlanCost = PLAN_COSTS[currentPlan] ?? 0;
 
     // Calculate prorated amount for mid-month activation
     let chargeAmount = cost;
@@ -101,6 +105,19 @@ export const MerchantBillingController = {
         },
       });
     }
+
+    await AuditLogger.billing(
+      merchant.userId?.toString() || "",
+      "plan_changed",
+      undefined,
+      {
+        merchantId: merchant._id.toString(),
+        previousPlan: currentPlan,
+        newPlan,
+        charged: chargeAmount,
+        isProrated,
+      },
+    );
 
     return {
       success: true,
@@ -387,13 +404,7 @@ export const MerchantBillingController = {
         merchant.gracePeriodEnds &&
         new Date() < merchant.gracePeriodEnds
       ) {
-        const planCosts = {
-          professional: 39,
-          enterprise: 149,
-        };
-
-        const planCost =
-          planCosts[merchant.plan as keyof typeof planCosts] || 0;
+        const planCost = PLAN_COSTS[merchant.plan] ?? 0;
         const user = merchant.userId
           ? await User.findById(merchant.userId)
           : null;
@@ -432,36 +443,46 @@ export const MerchantBillingController = {
         ? await User.findById(merchant.userId)
         : null;
 
-      // 6. Referral Bonus Payout (10% to the referrer)
+      // 6. Referral Bonus Payout (10% to the referrer, capped at $500 lifetime)
+      const MAX_REFERRAL_EARNING = 500;
       if (user && user.referredBy) {
         const referralBonus = parseFloat((usdAmount * 0.1).toFixed(2));
         if (referralBonus > 0) {
           const referrer = await User.findById(user.referredBy);
           if (referrer) {
-            await User.findByIdAndUpdate(referrer._id, {
-              $inc: {
-                creditBalance: referralBonus,
-                referralEarningsUsd: referralBonus,
-              },
-            });
-
-            // Notify the referrer on one of their merchants
-            const referrerMerchant = await Merchant.findOne({
-              userId: referrer._id,
-            });
-            if (referrerMerchant) {
-              await NotificationService.create({
-                merchantId: referrerMerchant._id.toString(),
-                title: "Affiliate Commission Received! 🎁",
-                description: `You earned $${referralBonus.toFixed(2)} from an affiliate top-up.`,
-                type: "success",
-                link: "/dashboard/affiliates",
-              });
-            }
-
-            console.info(
-              `🎁 Affiliate Commission: User(${user.referredBy}) +$${referralBonus} (From User(${user._id}))`,
+            const cappedBonus = Math.min(
+              referralBonus,
+              Math.max(
+                0,
+                MAX_REFERRAL_EARNING - (referrer.referralEarningsUsd || 0),
+              ),
             );
+            if (cappedBonus > 0) {
+              await User.findByIdAndUpdate(referrer._id, {
+                $inc: {
+                  creditBalance: cappedBonus,
+                  referralEarningsUsd: cappedBonus,
+                },
+              });
+
+              // Notify the referrer on one of their merchants
+              const referrerMerchant = await Merchant.findOne({
+                userId: referrer._id,
+              });
+              if (referrerMerchant) {
+                await NotificationService.create({
+                  merchantId: referrerMerchant._id.toString(),
+                  title: "Affiliate Commission Received! 🎁",
+                  description: `You earned $${cappedBonus.toFixed(2)} from an affiliate top-up.`,
+                  type: "success",
+                  link: "/dashboard/affiliates",
+                });
+              }
+
+              console.info(
+                `🎁 Affiliate Commission: User(${user.referredBy}) +$${cappedBonus} (From User(${user._id}))`,
+              );
+            }
           }
         }
       }
@@ -473,6 +494,20 @@ export const MerchantBillingController = {
 
       console.info(
         `🤑 Top-Up Claimed: ${merchant._id} +$${usdAmount} (${txHash})`,
+      );
+
+      await AuditLogger.billing(
+        merchant.userId?.toString() || "",
+        "topup",
+        undefined,
+        {
+          merchantId: merchant._id.toString(),
+          txHash,
+          currency,
+          amountCrypto: verification.amountCrypto,
+          amountUsd: usdAmount,
+          claimId: claim._id.toString(),
+        },
       );
 
       return reply.send({
@@ -500,12 +535,7 @@ export const MerchantBillingController = {
       return reply.code(400).send({ error: "Grace period expired" });
     }
 
-    const planCosts = {
-      professional: 39,
-      enterprise: 149,
-    };
-
-    const planCost = planCosts[merchant.plan as keyof typeof planCosts] || 0;
+    const planCost = PLAN_COSTS[merchant.plan] ?? 0;
     if (planCost === 0) {
       return reply.code(400).send({ error: "Starter plan has no cost" });
     }
