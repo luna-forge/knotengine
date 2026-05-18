@@ -1,4 +1,9 @@
-import { Merchant, User, WebhookDelivery } from "@qodinger/knot-database";
+import {
+  Merchant,
+  User,
+  WebhookDelivery,
+  ApiKey,
+} from "@qodinger/knot-database";
 import { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { ZodTypeProvider } from "fastify-type-provider-zod";
 import { z } from "zod";
@@ -19,6 +24,11 @@ import { MerchantCoreController } from "../controllers/merchant/core.controller.
 import { MerchantNotificationController } from "../controllers/merchant/notification.controller.js";
 import { MerchantPromoController } from "../controllers/merchant/promo.controller.js";
 import { MerchantSecurityController } from "../controllers/merchant/security.controller.js";
+import { MerchantSuspensionController } from "../controllers/merchant/suspension.controller.js";
+import { MerchantSoftDeleteController } from "../controllers/merchant/soft-delete.controller.js";
+import { ApiKeyController } from "../controllers/merchant/api-key.controller.js";
+import { WebhookEndpointController } from "../controllers/merchant/webhook-endpoint.controller.js";
+import { MerchantTeamController } from "../controllers/merchant-team.controller.js";
 import { ipAllowlistMiddleware } from "../infra/ip-allowlist.js";
 
 function escapeRegExp(str: string): string {
@@ -29,6 +39,24 @@ const sanitizeString = (val?: string) =>
   val ? limitLength(stripHtmlTags(val).trim(), MAX_TEXT_LENGTH) : val;
 
 const isValidHex = (val: string) => /^[a-fA-F0-9]+$/.test(val);
+
+// ──────────────────────────────────────────────
+// Rate limiting for merchant creation (per oauthId)
+// ──────────────────────────────────────────────
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+const createMerchantRateLimit = new Map<string, RateLimitEntry>();
+const CREATE_MERCHANT_MAX = 5;
+const CREATE_MERCHANT_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, entry] of createMerchantRateLimit.entries()) {
+    if (entry.resetAt < now) createMerchantRateLimit.delete(key);
+  }
+}, 60_000);
 
 export async function merchantRoutes(app: FastifyInstance) {
   const server = app.withTypeProvider<ZodTypeProvider>();
@@ -45,14 +73,23 @@ export async function merchantRoutes(app: FastifyInstance) {
     }
 
     const apiKeyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
-    const merchant = await Merchant.findOne({ apiKeyHash, isActive: true });
+    const foundKey = await ApiKey.findOne({
+      keyHash: apiKeyHash,
+      isActive: true,
+    }).populate("merchantId");
 
-    if (!merchant) {
-      return reply.code(401).send({ error: "Invalid API Key" });
+    if (foundKey) {
+      const merchant = foundKey.merchantId as any;
+      if (!merchant.isActive || merchant.isDeleted) {
+        return reply
+          .code(403)
+          .send({ error: "Merchant account suspended or deleted" });
+      }
+      request.merchant = merchant;
+      return;
     }
 
-    // Attach to request
-    request.merchant = merchant;
+    return reply.code(401).send({ error: "Invalid API Key" });
   };
 
   // ──────────────────────────────────────────────
@@ -75,6 +112,7 @@ export async function merchantRoutes(app: FastifyInstance) {
     const query: Record<string, unknown> = {
       oauthId: { $regex: new RegExp(`^${escapeRegExp(oauthId)}(:|$)`) },
       isActive: true,
+      isDeleted: { $ne: true },
     };
     if (merchantId) {
       // Support both the new public mid_... format and legacy MongoDB _id
@@ -156,6 +194,30 @@ export async function merchantRoutes(app: FastifyInstance) {
           oauthId: z.string().max(100).optional(),
           referredBy: z.string().max(20).optional(),
         }),
+      },
+      preHandler: async (request: FastifyRequest, reply: FastifyReply) => {
+        const body = request.body as { oauthId?: string };
+        const oauthId = body.oauthId;
+        if (!oauthId) return;
+
+        const isDev =
+          process.env.NODE_ENV !== "production" &&
+          (request.ip === "127.0.0.1" || request.ip === "::1");
+        if (isDev) return;
+
+        const now = Date.now();
+        let entry = createMerchantRateLimit.get(oauthId);
+        if (!entry || entry.resetAt < now) {
+          entry = { count: 0, resetAt: now + CREATE_MERCHANT_WINDOW_MS };
+          createMerchantRateLimit.set(oauthId, entry);
+        }
+        entry.count++;
+        if (entry.count > CREATE_MERCHANT_MAX) {
+          return reply.code(429).send({
+            error: "Too many merchant creation attempts",
+            message: `Please wait ${Math.ceil((entry.resetAt - now) / 60000)} minutes before trying again.`,
+          });
+        }
       },
     },
     MerchantCoreController.createMerchant,
@@ -283,16 +345,53 @@ export async function merchantRoutes(app: FastifyInstance) {
   server.post(
     "/v1/merchants/me/keys/generate",
     { preHandler: requireAuth },
-    MerchantSecurityController.generateKey,
+    async (request: any, reply: FastifyReply) => {
+      const merchant = request.merchant;
+      if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
+
+      const existingKeys = await ApiKey.countDocuments({
+        merchantId: merchant._id,
+        isActive: true,
+      });
+
+      if (existingKeys > 0) {
+        return reply.code(400).send({
+          error:
+            "API keys already exist. Use the Developers page to manage keys.",
+        });
+      }
+
+      return ApiKeyController.createKey(
+        {
+          ...request,
+          params: { merchantId: merchant.merchantId },
+          body: { label: "Default Key", scope: "full_access" },
+        } as any,
+        reply,
+      );
+    },
   );
 
   // ──────────────────────────────────────────────
   // POST /v1/merchants/me/keys — Rotate Key (API key auth)
+  // Deprecated: Use /v1/merchants/:merchantId/keys instead
   // ──────────────────────────────────────────────
   server.post(
     "/v1/merchants/me/keys",
     { preHandler: requireAuth },
-    MerchantSecurityController.rotateKey,
+    async (request: any, reply: FastifyReply) => {
+      const merchant = request.merchant;
+      if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
+
+      return ApiKeyController.createKey(
+        {
+          ...request,
+          params: { merchantId: merchant.merchantId },
+          body: { label: "Rotated Key", scope: "full_access" },
+        } as any,
+        reply,
+      );
+    },
   );
 
   // ──────────────────────────────────────────────
@@ -627,6 +726,281 @@ export async function merchantRoutes(app: FastifyInstance) {
         successRate: parseFloat(successRate.toFixed(2)),
       });
     },
+  );
+
+  // ──────────────────────────────────────────────
+  // Team Management Routes
+  // ──────────────────────────────────────────────
+
+  // GET /v1/merchants/:merchantId/team
+  server.get(
+    "/v1/merchants/:merchantId/team",
+    MerchantTeamController.getMembers,
+  );
+
+  // POST /v1/merchants/:merchantId/team/invite
+  server.post(
+    "/v1/merchants/:merchantId/team/invite",
+    {
+      schema: {
+        body: z.object({
+          email: z
+            .string()
+            .email("Invalid email format")
+            .max(MAX_EMAIL_LENGTH)
+            .transform((val) =>
+              limitLength(
+                stripHtmlTags(val).toLowerCase().trim(),
+                MAX_EMAIL_LENGTH,
+              ),
+            ),
+          role: z.enum(["admin", "developer", "viewer", "billing"]),
+        }),
+      },
+    },
+    MerchantTeamController.inviteMember,
+  );
+
+  // PATCH /v1/merchants/:merchantId/team/:memberId/role
+  server.patch(
+    "/v1/merchants/:merchantId/team/:memberId/role",
+    {
+      schema: {
+        body: z.object({
+          role: z.enum(["admin", "developer", "viewer", "billing"]),
+          reason: z.string().max(MAX_TEXT_LENGTH).optional(),
+        }),
+      },
+    },
+    MerchantTeamController.updateMemberRole,
+  );
+
+  // DELETE /v1/merchants/:merchantId/team/:memberId
+  server.delete(
+    "/v1/merchants/:merchantId/team/:memberId",
+    MerchantTeamController.removeMember,
+  );
+
+  // POST /v1/merchants/team/accept-invite
+  server.post(
+    "/v1/merchants/team/accept-invite",
+    {
+      schema: {
+        body: z.object({
+          inviteToken: z.string().min(1),
+        }),
+      },
+    },
+    MerchantTeamController.acceptInvite,
+  );
+
+  // POST /v1/merchants/:merchantId/team/transfer-ownership
+  server.post(
+    "/v1/merchants/:merchantId/team/transfer-ownership",
+    {
+      schema: {
+        body: z.object({
+          newOwnerId: z.string().min(1),
+          reason: z.string().max(MAX_TEXT_LENGTH).optional(),
+        }),
+      },
+    },
+    MerchantTeamController.transferOwnership,
+  );
+
+  // POST /v1/merchants/:merchantId/team/leave
+  server.post(
+    "/v1/merchants/:merchantId/team/leave",
+    MerchantTeamController.leaveMerchant,
+  );
+
+  // GET /v1/merchants/team/default
+  server.get(
+    "/v1/merchants/team/default",
+    MerchantTeamController.getDefaultMerchant,
+  );
+
+  // POST /v1/merchants/team/default
+  server.post(
+    "/v1/merchants/team/default",
+    {
+      schema: {
+        body: z.object({
+          merchantId: z.string().min(1),
+        }),
+      },
+    },
+    MerchantTeamController.setDefaultMerchant,
+  );
+
+  // ──────────────────────────────────────────────
+  // Merchant Suspension Routes
+  // ──────────────────────────────────────────────
+
+  // POST /v1/merchants/:merchantId/suspend
+  server.post(
+    "/v1/merchants/:merchantId/suspend",
+    {
+      schema: {
+        body: z.object({
+          reason: z.enum([
+            "payment_failed",
+            "policy_violation",
+            "fraud",
+            "manual",
+            "other",
+          ]),
+          note: z.string().max(MAX_TEXT_LENGTH).optional(),
+        }),
+      },
+    },
+    MerchantSuspensionController.suspendMerchant,
+  );
+
+  // POST /v1/merchants/:merchantId/reinstate
+  server.post(
+    "/v1/merchants/:merchantId/reinstate",
+    MerchantSuspensionController.reinstateMerchant,
+  );
+
+  // GET /v1/merchants/:merchantId/suspension-status
+  server.get(
+    "/v1/merchants/:merchantId/suspension-status",
+    MerchantSuspensionController.getSuspensionStatus,
+  );
+
+  // ──────────────────────────────────────────────
+  // Multiple API Key Management Routes
+  // ──────────────────────────────────────────────
+
+  // GET /v1/merchants/:merchantId/keys
+  server.get("/v1/merchants/:merchantId/keys", ApiKeyController.listKeys);
+
+  // POST /v1/merchants/:merchantId/keys
+  server.post(
+    "/v1/merchants/:merchantId/keys",
+    {
+      schema: {
+        body: z.object({
+          label: z.string().max(MAX_TEXT_LENGTH).optional(),
+          scope: z
+            .enum(["full_access", "read_only", "invoices", "webhooks"])
+            .default("full_access"),
+        }),
+      },
+    },
+    ApiKeyController.createKey,
+  );
+
+  // PATCH /v1/merchants/:merchantId/keys/:keyId
+  server.patch(
+    "/v1/merchants/:merchantId/keys/:keyId",
+    {
+      schema: {
+        body: z.object({
+          label: z.string().max(MAX_TEXT_LENGTH).optional(),
+          scope: z
+            .enum(["full_access", "read_only", "invoices", "webhooks"])
+            .optional(),
+        }),
+      },
+    },
+    ApiKeyController.updateKey,
+  );
+
+  // POST /v1/merchants/:merchantId/keys/:keyId/revoke
+  server.post(
+    "/v1/merchants/:merchantId/keys/:keyId/revoke",
+    {
+      schema: {
+        body: z.object({
+          reason: z.string().max(MAX_TEXT_LENGTH).optional(),
+        }),
+      },
+    },
+    ApiKeyController.revokeKey,
+  );
+
+  // ──────────────────────────────────────────────
+  // Multiple Webhook Endpoint Routes
+  // ──────────────────────────────────────────────
+
+  // GET /v1/merchants/:merchantId/webhooks/endpoints
+  server.get(
+    "/v1/merchants/:merchantId/webhooks/endpoints",
+    WebhookEndpointController.listEndpoints,
+  );
+
+  // POST /v1/merchants/:merchantId/webhooks/endpoints
+  server.post(
+    "/v1/merchants/:merchantId/webhooks/endpoints",
+    {
+      schema: {
+        body: z.object({
+          url: z.string().url().max(MAX_URL_LENGTH),
+          description: z.string().max(MAX_TEXT_LENGTH).optional(),
+          events: z.array(z.string()).optional(),
+          eventMode: z.enum(["all", "filtered"]).default("filtered"),
+        }),
+      },
+    },
+    WebhookEndpointController.createEndpoint,
+  );
+
+  // PATCH /v1/merchants/:merchantId/webhooks/endpoints/:endpointId
+  server.patch(
+    "/v1/merchants/:merchantId/webhooks/endpoints/:endpointId",
+    {
+      schema: {
+        body: z.object({
+          url: z.string().url().max(MAX_URL_LENGTH).optional(),
+          description: z.string().max(MAX_TEXT_LENGTH).optional(),
+          events: z.array(z.string()).optional(),
+          eventMode: z.enum(["all", "filtered"]).optional(),
+        }),
+      },
+    },
+    WebhookEndpointController.updateEndpoint,
+  );
+
+  // DELETE /v1/merchants/:merchantId/webhooks/endpoints/:endpointId
+  server.delete(
+    "/v1/merchants/:merchantId/webhooks/endpoints/:endpointId",
+    WebhookEndpointController.deleteEndpoint,
+  );
+
+  // POST /v1/merchants/:merchantId/webhooks/endpoints/:endpointId/test
+  server.post(
+    "/v1/merchants/:merchantId/webhooks/endpoints/:endpointId/test",
+    WebhookEndpointController.testEndpoint,
+  );
+
+  // GET /v1/merchants/:merchantId/webhooks/endpoints/:endpointId/secret
+  server.get(
+    "/v1/merchants/:merchantId/webhooks/endpoints/:endpointId/secret",
+    WebhookEndpointController.getEndpointSecret,
+  );
+
+  // ──────────────────────────────────────────────
+  // Merchant Soft Delete Routes
+  // ──────────────────────────────────────────────
+
+  // POST /v1/merchants/:merchantId/delete
+  server.post(
+    "/v1/merchants/:merchantId/delete",
+    MerchantSoftDeleteController.softDelete,
+  );
+
+  // POST /v1/merchants/:merchantId/restore
+  server.post(
+    "/v1/merchants/:merchantId/restore",
+    MerchantSoftDeleteController.restore,
+  );
+
+  // GET /v1/merchants/:merchantId/delete-status
+  server.get(
+    "/v1/merchants/:merchantId/delete-status",
+    MerchantSoftDeleteController.getDeletedStatus,
   );
 }
 

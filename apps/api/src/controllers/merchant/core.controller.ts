@@ -1,5 +1,10 @@
 import { FastifyReply } from "fastify";
-import { Merchant, User } from "@qodinger/knot-database";
+import {
+  Merchant,
+  MerchantMember,
+  User,
+  ApiKey,
+} from "@qodinger/knot-database";
 import { BIP32Factory } from "bip32";
 import * as bip39 from "bip39";
 import * as bitcoin from "bitcoinjs-lib";
@@ -76,15 +81,6 @@ export const MerchantCoreController = {
 
     const webhookSecret = `knot_wh_${crypto.randomBytes(24).toString("hex")}`;
 
-    let apiKey: string | undefined;
-    let apiKeyHash: string | undefined;
-
-    // Only generate an API key for direct (non-OAuth) registrations
-    if (!oauthId) {
-      apiKey = `knot_sk_${crypto.randomBytes(24).toString("hex")}`;
-      apiKeyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
-    }
-
     // Append timestamp to invoke uniqueness for multi-merchant support
     const uniqueOauthId = oauthId ? `${oauthId}:${Date.now()}` : undefined;
 
@@ -102,17 +98,17 @@ export const MerchantCoreController = {
       if (!user) {
         // Resolve Referrer for the new User
         let referrerId: typeof User.prototype._id | undefined = undefined;
-        let isAffiliatSignup = false;
+        let isAffiliateSignup = false;
         if (referralCode) {
           const referrer = await User.findOne({ referralCode });
           if (referrer) {
             referrerId = referrer._id;
-            isAffiliatSignup = true;
+            isAffiliateSignup = true;
           }
         }
 
         // Affiliate signups get an extra bonus on top of the welcome credit
-        const startingCredit = isAffiliatSignup
+        const startingCredit = isAffiliateSignup
           ? welcomeCredit + affiliateSignupBonus
           : welcomeCredit;
 
@@ -125,7 +121,7 @@ export const MerchantCoreController = {
           referredBy: referrerId,
         });
         console.info(
-          `👤 New User Identity created: ${oauthId} (+$${startingCredit} credit${isAffiliatSignup ? ` [affiliate bonus included]` : ""})`,
+          `👤 New User Identity created: ${oauthId} (+$${startingCredit} credit${isAffiliateSignup ? ` [affiliate bonus included]` : ""})`,
         );
       }
       userId = user._id;
@@ -152,7 +148,6 @@ export const MerchantCoreController = {
       userId,
       name,
       email,
-      apiKeyHash,
       oauthId: uniqueOauthId,
       btcXpub,
       btcXpubTestnet: finalBtcXpubTestnet,
@@ -162,6 +157,34 @@ export const MerchantCoreController = {
       webhookUrl,
       webhookSecret,
     });
+
+    // Create a default API key for the merchant (OAuth and direct registrations both get one)
+    const defaultApiKey = `knot_sk_${crypto.randomBytes(24).toString("hex")}`;
+    const defaultApiKeyHash = crypto
+      .createHash("sha256")
+      .update(defaultApiKey)
+      .digest("hex");
+    const keyId = `key_${crypto.randomBytes(8).toString("hex")}`;
+
+    await ApiKey.create({
+      merchantId: newMerchant._id,
+      keyId,
+      keyHash: defaultApiKeyHash,
+      label: "Default API Key",
+      scope: "full_access",
+      lastFour: defaultApiKey.slice(-4),
+      createdBy: userId,
+    });
+
+    if (userId) {
+      await MerchantMember.create({
+        merchantId: newMerchant._id,
+        userId,
+        role: "owner",
+        accepted: true,
+        acceptedAt: new Date(),
+      });
+    }
 
     console.info(`Merchant created: ${newMerchant.id}`);
 
@@ -185,7 +208,7 @@ export const MerchantCoreController = {
       email: newMerchant.email,
       logoUrl: newMerchant.logoUrl,
       webhookSecret,
-      apiKey: apiKey ?? null, // null for OAuth merchants
+      apiKey: defaultApiKey,
     });
   },
   listMerchants: async (request: any, reply: FastifyReply) => {
@@ -200,15 +223,23 @@ export const MerchantCoreController = {
     const merchants = await Merchant.find({
       oauthId: { $regex: new RegExp(`^${baseOauthId}(:|$)`) },
       isActive: true,
+      isDeleted: { $ne: true },
     }).sort({ createdAt: 1 });
 
-    const results = [];
-    for (const merchant of merchants) {
+    // Batch fetch all users in a single query
+    const userIds = merchants
+      .map((m) => m.userId)
+      .filter((id): id is typeof User.prototype._id => id != null);
+    const users = await User.find({ _id: { $in: userIds } });
+    const userMap = new Map<string, (typeof users)[number]>();
+    for (const u of users) userMap.set(u._id.toString(), u);
+
+    return merchants.map((merchant) => {
       const currentUser = merchant.userId
-        ? await User.findById(merchant.userId)
+        ? (userMap.get(merchant.userId.toString()) ?? null)
         : null;
 
-      results.push({
+      return {
         id: merchant.merchantId,
         merchantId: merchant.merchantId,
         name: merchant.name,
@@ -218,10 +249,8 @@ export const MerchantCoreController = {
         referralCode: currentUser?.referralCode,
         referralEarningsUsd: currentUser?.referralEarningsUsd || 0,
         creditBalance: currentUser?.creditBalance || 0,
-      });
-    }
-
-    return results;
+      };
+    });
   },
   getMerchantByOauth: async (
     request: FastifyRequest<{ Params: { oauthId: string } }>,
@@ -238,6 +267,7 @@ export const MerchantCoreController = {
     const merchants = await Merchant.find({
       oauthId: { $regex: new RegExp(`^${oauthId}(:|$)`) },
       isActive: true,
+      isDeleted: { $ne: true },
     }).sort({
       createdAt: 1,
     });
@@ -246,11 +276,8 @@ export const MerchantCoreController = {
       return reply.code(404).send({ error: "Not found" });
     }
 
-    const results = [];
-
+    // Phase 1: Ensure every merchant has a public merchantId and API key
     for (let merchant of merchants) {
-      let apiKey: string | undefined;
-
       // Ensure every merchant has a public merchantId (mid_...)
       if (!merchant.merchantId) {
         const mid = await generateMerchantId();
@@ -265,28 +292,34 @@ export const MerchantCoreController = {
         );
       }
 
-      // Ensure every merchant has an API key
-      if (!merchant.apiKeyHash) {
-        apiKey = `knot_sk_${crypto.randomBytes(24).toString("hex")}`;
+      // Ensure every merchant has an API key in the ApiKey collection
+      const existingKey = await ApiKey.findOne({
+        merchantId: merchant._id,
+        isActive: true,
+      });
+      if (!existingKey) {
+        const apiKey = `knot_sk_${crypto.randomBytes(24).toString("hex")}`;
         const apiKeyHash = crypto
           .createHash("sha256")
           .update(apiKey)
           .digest("hex");
+        const keyId = `key_${crypto.randomBytes(8).toString("hex")}`;
 
-        const updatedMerchant = await Merchant.findByIdAndUpdate(
-          merchant._id,
-          { $set: { apiKeyHash } },
-          { new: true },
-        );
-        if (!updatedMerchant) throw new Error("Failed to update merchant");
-        merchant = updatedMerchant;
+        await ApiKey.create({
+          merchantId: merchant._id,
+          keyId,
+          keyHash: apiKeyHash,
+          label: "Auto-generated API Key",
+          scope: "full_access",
+          lastFour: apiKey.slice(-4),
+        });
 
         console.info(
           `🔑 Auto-generated API key for OAuth merchant: ${merchant._id}`,
         );
       }
 
-      // 4. Ensure User Identity (Lazy Migration)
+      // Ensure User Identity (Lazy Migration)
       if (!merchant.userId) {
         const baseOauthId = oauthId.split(":")[0];
         let user = await User.findOne({ oauthId: baseOauthId });
@@ -300,44 +333,55 @@ export const MerchantCoreController = {
             referralCode: await generateReferralCode(),
           });
         }
-        const updatedMerchant = await Merchant.findByIdAndUpdate(
+        await Merchant.findByIdAndUpdate(
           merchant._id,
           { $set: { userId: user._id } },
           { new: true },
         );
-        if (updatedMerchant) merchant = updatedMerchant;
+        merchant.userId = user._id;
       }
+    }
 
-      let currentUser = merchant.userId
-        ? await User.findById(merchant.userId)
+    // Phase 2: Batch fetch all users in a single query
+    const userIds = merchants
+      .map((m) => m.userId)
+      .filter((id): id is typeof User.prototype._id => id != null);
+    const users = await User.find({ _id: { $in: userIds } });
+    const userMap = new Map<string, (typeof users)[number]>();
+    for (const u of users) userMap.set(u._id.toString(), u);
+
+    // Phase 3: Ensure legacy users have referral codes (batch update)
+    const usersNeedingReferralCode = users.filter((u) => !u.referralCode);
+    if (usersNeedingReferralCode.length > 0) {
+      await Promise.all(
+        usersNeedingReferralCode.map(async (u) => {
+          const code = await generateReferralCode();
+          u.referralCode = code;
+          await User.findByIdAndUpdate(u._id, { $set: { referralCode: code } });
+        }),
+      );
+    }
+
+    // Phase 4: Build results
+    return merchants.map((merchant) => {
+      const currentUser = merchant.userId
+        ? (userMap.get(merchant.userId.toString()) ?? null)
         : null;
 
-      // Ensure legacy user has a referral code
-      if (currentUser && !currentUser.referralCode) {
-        const code = await generateReferralCode();
-        currentUser = await User.findByIdAndUpdate(
-          currentUser._id,
-          { $set: { referralCode: code } },
-          { new: true },
-        );
-      }
-
-      results.push({
+      return {
         id: merchant.merchantId,
         merchantId: merchant.merchantId,
         name: merchant.name,
         email: merchant.email,
         logoUrl: merchant.logoUrl,
-        apiKey: apiKey ?? null,
+        apiKey: null,
         hasApiKey: true,
         twoFactorEnabled: currentUser?.twoFactorEnabled || false,
         referralCode: currentUser?.referralCode,
         referralEarningsUsd: currentUser?.referralEarningsUsd || 0,
         creditBalance: currentUser?.creditBalance || 0,
-      });
-    }
-
-    return results;
+      };
+    });
   },
   getProfile: async (request: any, reply: FastifyReply) => {
     const merchant = request.merchant;
@@ -416,13 +460,35 @@ export const MerchantCoreController = {
     const merchant = request.merchant;
     if (!merchant) return reply.code(500).send({ error: "Auth failed" });
 
-    await Merchant.findByIdAndDelete(merchant._id);
+    const user =
+      request.user || (await User.findOne({ oauthId: merchant.oauthId }));
 
-    console.info(`[Settings] Deleted merchant: '${merchant._id}'`);
+    await Merchant.findByIdAndUpdate(merchant._id, {
+      $set: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: user?._id,
+        isActive: false,
+      },
+    });
+
+    await ApiKey.updateMany(
+      { merchantId: merchant._id, isActive: true },
+      {
+        $set: {
+          isActive: false,
+          revokedAt: new Date(),
+          revokedReason: "merchant_deleted",
+        },
+      },
+    );
+
+    console.info(`[Settings] Soft-deleted merchant: '${merchant._id}'`);
 
     return {
       success: true,
-      message: "Merchant deleted successfully",
+      message:
+        "Merchant deleted successfully. All data is preserved for compliance.",
     };
   },
   updateProfile: async (request: any, reply: FastifyReply) => {
