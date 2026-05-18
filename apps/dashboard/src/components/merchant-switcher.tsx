@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronsUpDown, PlusCircle, Store, Camera } from "lucide-react";
+import {
+  Check,
+  ChevronsUpDown,
+  PlusCircle,
+  Store,
+  Camera,
+  Star,
+} from "lucide-react";
 import { useSession } from "next-auth/react";
 
 import {
@@ -27,6 +34,16 @@ import { createMerchant } from "@/actions/merchant";
 import { uploadLogo } from "@/actions/upload";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { SidebarMenuButton } from "@/components/ui/sidebar";
+import { Badge } from "@/components/ui/badge";
+import { toast } from "sonner";
+
+type MerchantWithRole = {
+  id: string;
+  name: string;
+  logoUrl?: string;
+  role?: string;
+  isDefault?: boolean;
+};
 
 export function MerchantSwitcher() {
   const { data: session, update } = useSession();
@@ -38,14 +55,14 @@ export function MerchantSwitcher() {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [detailedMerchants, setDetailedMerchants] = React.useState<
-    Array<{ _id: string; name: string; logoUrl?: string }>
+    MerchantWithRole[]
   >([]);
 
-  // @ts-expect-error - session user type issues
-  const sessionMerchants = session?.user?.merchants || [];
-  const activeMerchantId = session?.user?.merchantId;
+  const sessionMerchants =
+    (session?.user as { merchants?: MerchantWithRole[] })?.merchants || [];
+  const activeMerchantId = (session?.user as { merchantId?: string })
+    ?.merchantId;
 
-  // Fetch full merchant details (with logos) on mount
   React.useEffect(() => {
     const fetchMerchants = async () => {
       try {
@@ -61,14 +78,11 @@ export function MerchantSwitcher() {
     if (session?.user) fetchMerchants();
   }, [session?.user]);
 
-  // Use detailed data if available, otherwise session data
   const merchants =
     detailedMerchants.length > 0 ? detailedMerchants : sessionMerchants;
 
-  const activeMerchant = merchants.find(
-    (m: { id: string }) => m.id === activeMerchantId,
-  ) ||
-    merchants[0] || { name: "Select Merchant" };
+  const activeMerchant = merchants.find((m) => m.id === activeMerchantId) ||
+    merchants[0] || { name: "Select Merchant", id: "" };
 
   const handleCreateMerchant = async () => {
     if (!newMerchantName.trim()) return;
@@ -77,13 +91,11 @@ export function MerchantSwitcher() {
     try {
       let logoUrl: string | undefined;
 
-      // Upload logo to Cloudinary first if one was selected
       if (logoBase64) {
         logoUrl = await uploadLogo(logoBase64);
       }
 
       const newMerchantData = await createMerchant(newMerchantName, logoUrl);
-      // Calls update to refresh server session with new merchant ID
       await update({ merchantId: newMerchantData.id });
       window.location.reload();
       setShowNewMerchantDialog(false);
@@ -111,6 +123,25 @@ export function MerchantSwitcher() {
     await update({ merchantId });
     window.location.reload();
   };
+
+  const handleSetDefault = async (merchantId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/v1/merchants/team/default", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merchantId }),
+      });
+      if (res.ok) {
+        toast.success("Default merchant updated");
+      }
+    } catch {
+      toast.error("Failed to update default merchant");
+    }
+  };
+
+  const activeMerchantRole = activeMerchant.role || "owner";
 
   return (
     <Dialog
@@ -146,7 +177,7 @@ export function MerchantSwitcher() {
                 {activeMerchant.name || "Untitled Merchant"}
               </span>
               <span className="text-muted-foreground/60 mt-0.5 truncate text-[10px] leading-none font-bold tracking-widest uppercase">
-                Merchant
+                {activeMerchantRole}
               </span>
             </div>
             <ChevronsUpDown className="ml-auto size-4 shrink-0 opacity-50 group-data-[collapsible=icon]:hidden" />
@@ -161,10 +192,9 @@ export function MerchantSwitcher() {
           <DropdownMenuLabel className="text-muted-foreground px-2 py-1.5 text-xs font-bold tracking-widest uppercase">
             Merchants
           </DropdownMenuLabel>
-          {merchants.map(
-            (merchant: { id: string; name?: string; logoUrl?: string }) => (
+          {merchants.map((merchant) => (
+            <div key={merchant.id}>
               <DropdownMenuItem
-                key={merchant.id}
                 onSelect={() => handleMerchantSwitch(merchant.id)}
                 className="cursor-pointer gap-2 p-2 text-sm font-medium"
               >
@@ -180,13 +210,40 @@ export function MerchantSwitcher() {
                     )}
                   </AvatarFallback>
                 </Avatar>
-                {merchant.name || "Untitled Merchant"}
-                {merchant.id === activeMerchantId && (
-                  <Check className="ml-auto size-4" />
-                )}
+                <div className="flex flex-1 items-center gap-2">
+                  <span className="truncate">
+                    {merchant.name || "Untitled Merchant"}
+                  </span>
+                  {merchant.role && (
+                    <Badge
+                      variant="outline"
+                      className="px-1 py-0 text-[10px] capitalize"
+                    >
+                      {merchant.role}
+                    </Badge>
+                  )}
+                </div>
+                <div className="flex items-center gap-1">
+                  {merchant.isDefault && (
+                    <Star className="size-3 fill-amber-500 text-amber-500" />
+                  )}
+                  {merchant.id === activeMerchantId && (
+                    <Check className="size-4" />
+                  )}
+                </div>
               </DropdownMenuItem>
-            ),
-          )}
+              <DropdownMenuItem
+                onSelect={(e) => e.preventDefault()}
+                onClick={(e) => handleSetDefault(merchant.id, e)}
+                className="text-muted-foreground hover:text-foreground cursor-pointer gap-2 px-6 py-1.5 text-xs"
+              >
+                <Star
+                  className={`size-3 ${merchant.isDefault ? "fill-amber-500 text-amber-500" : ""}`}
+                />
+                {merchant.isDefault ? "Default merchant" : "Set as default"}
+              </DropdownMenuItem>
+            </div>
+          ))}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="cursor-pointer gap-2 p-2 text-sm font-medium"
