@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 
 export * from "./models";
+export { MerchantMember } from "./models/merchant-member.model";
+export { ApiKey } from "./models/api-key.model";
+export { WebhookEndpoint } from "./models/webhook-endpoint.model";
 export { mongoose };
 
 export const connectToDatabase = async (uri: string) => {

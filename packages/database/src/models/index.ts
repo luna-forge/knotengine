@@ -1,6 +1,7 @@
 export * from "./audit-log.model";
 export * from "./invoice.model";
 export * from "./merchant.model";
+export * from "./merchant-member.model";
 export * from "./notification.model";
 export * from "./promo-code.model";
 export * from "./topup-claim.model";
@@ -8,3 +9,5 @@ export * from "./user.model";
 export * from "./verification-token.model";
 export * from "./webhook-delivery.model";
 export * from "./webhook-event.model";
+export * from "./api-key.model";
+export * from "./webhook-endpoint.model";
