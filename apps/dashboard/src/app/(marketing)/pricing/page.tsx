@@ -53,7 +53,10 @@ export default function PricingPage() {
                 className="mt-auto w-full rounded-md bg-white font-bold text-black shadow-[0_0_20px_rgba(255,255,255,0.1)] transition-all hover:bg-zinc-200"
                 asChild
               >
-                <Link href="/docs">
+                <Link
+                  href="https://github.com/qodinger/knotengine?tab=readme-ov-file#-self-hosting"
+                  target="_blank"
+                >
                   Deploy yourself
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>

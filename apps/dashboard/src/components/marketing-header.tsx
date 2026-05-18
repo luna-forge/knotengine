@@ -94,7 +94,8 @@ export function MarketingHeader({ user }: MarketingHeaderProps) {
               <DropdownMenuContent className="mt-2 w-56 rounded-xl border-white/10 bg-[#0a0a0a]">
                 <DropdownMenuItem asChild className="cursor-pointer p-3">
                   <Link
-                    href="/docs"
+                    href="https://github.com/qodinger/knotengine?tab=readme-ov-file#-self-hosting"
+                    target="_blank"
                     className="flex items-center justify-between"
                   >
                     <span className="text-sm text-zinc-400">Documentation</span>

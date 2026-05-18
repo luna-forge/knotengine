@@ -613,7 +613,10 @@ export function WebhooksTab() {
                     className="h-auto p-0 text-xs text-slate-300 hover:text-white"
                     asChild
                   >
-                    <a href="/docs">
+                    <a
+                      href="https://github.com/qodinger/knotengine?tab=readme-ov-file#-self-hosting"
+                      target="_blank"
+                    >
                       View docs <ExternalLink className="ml-1.5 size-3" />
                     </a>
                   </Button>

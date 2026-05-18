@@ -68,7 +68,7 @@ export default function MarketingPage() {
           <div className="animate-in fade-in slide-in-from-bottom-4 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1.5 duration-700">
             <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
             <span className="text-xs font-medium text-zinc-400">
-              Open source · AGPL-3.0
+              Self-host free · AGPL-3.0 · Cloud coming soon
             </span>
           </div>
 
@@ -92,7 +92,7 @@ export default function MarketingPage() {
               className="h-11 rounded-md bg-white px-8 font-bold text-black shadow-[0_0_30px_rgba(255,255,255,0.1)] transition-all hover:bg-zinc-200 hover:shadow-[0_0_40px_rgba(255,255,255,0.15)]"
               asChild
             >
-              <Link href="/dashboard">
+              <Link href="/pricing">
                 Get Started Free
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -103,7 +103,12 @@ export default function MarketingPage() {
               className="h-11 rounded-md border-white/10 bg-white/5 text-white transition-all hover:bg-white/10"
               asChild
             >
-              <Link href="/docs">Read the docs</Link>
+              <Link
+                href="https://github.com/qodinger/knotengine?tab=readme-ov-file#-self-hosting"
+                target="_blank"
+              >
+                Read the docs
+              </Link>
             </Button>
           </div>
 
@@ -177,7 +182,10 @@ export default function MarketingPage() {
                 className="w-full rounded-md border-white/10 bg-white/5 font-bold text-white transition-all hover:bg-white/10"
                 asChild
               >
-                <Link href="/docs">
+                <Link
+                  href="https://github.com/qodinger/knotengine?tab=readme-ov-file#-self-hosting"
+                  target="_blank"
+                >
                   Deploy yourself
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
@@ -342,7 +350,7 @@ export default function MarketingPage() {
               className="h-11 rounded-md bg-white px-8 font-bold text-black shadow-[0_0_30px_rgba(255,255,255,0.1)] transition-all hover:bg-zinc-200"
               asChild
             >
-              <Link href="/dashboard">
+              <Link href="/pricing">
                 Get Started Free
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>

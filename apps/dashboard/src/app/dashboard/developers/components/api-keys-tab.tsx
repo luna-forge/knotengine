@@ -251,7 +251,8 @@ export function ApiKeysTab() {
                   </p>
                   <div className="flex pt-2 text-xs">
                     <a
-                      href="/docs"
+                      href="https://github.com/qodinger/knotengine?tab=readme-ov-file#-self-hosting"
+                      target="_blank"
                       className="inline-flex items-center gap-1.5 font-medium text-slate-300 transition-colors hover:text-white"
                     >
                       API Reference <ExternalLink className="size-3" />

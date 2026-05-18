@@ -182,7 +182,7 @@ export default function FeaturesPage() {
               className="h-11 rounded-md bg-white px-8 font-bold text-black transition-all hover:bg-zinc-200"
               asChild
             >
-              <Link href="/dashboard">
+              <Link href="/pricing">
                 Get Started Free
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
@@ -193,7 +193,12 @@ export default function FeaturesPage() {
               className="h-11 rounded-md border-white/10 bg-white/5 text-white transition-all hover:bg-white/10"
               asChild
             >
-              <Link href="/docs">Read the docs</Link>
+              <Link
+                href="https://github.com/qodinger/knotengine?tab=readme-ov-file#-self-hosting"
+                target="_blank"
+              >
+                Read the docs
+              </Link>
             </Button>
           </div>
         </div>
