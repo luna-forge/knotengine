@@ -276,5 +276,10 @@ export const inputValidators = {
     limitLength(stripHtmlTags(input), MAX_URL_LENGTH),
 };
 
-export { PLAN_LIMITS, getPlanLimits, checkPlanLimit } from "./src/plan-limits";
+export {
+  PLAN_LIMITS,
+  PLAN_COSTS,
+  getPlanLimits,
+  checkPlanLimit,
+} from "./src/plan-limits";
 export type { PlanLimits } from "./src/plan-limits";
