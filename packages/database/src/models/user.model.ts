@@ -25,6 +25,10 @@ export interface IUser extends Document {
   referralCode?: string;
   referredBy?: mongoose.Types.ObjectId;
   referralEarningsUsd: number;
+  /** Default merchant shown on login */
+  defaultMerchantId?: string;
+  /** Last accessed merchant for quick switching */
+  lastActiveMerchantId?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -44,6 +48,8 @@ const UserSchema: Schema = new Schema(
     referralCode: { type: String, unique: true, sparse: true },
     referredBy: { type: Schema.Types.ObjectId, ref: "User" },
     referralEarningsUsd: { type: Number, default: 0 },
+    defaultMerchantId: { type: String },
+    lastActiveMerchantId: { type: String },
   },
   { timestamps: true },
 );

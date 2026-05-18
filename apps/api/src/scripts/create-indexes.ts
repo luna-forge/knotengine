@@ -5,6 +5,9 @@ import {
   Notification,
   Merchant,
   User,
+  ApiKey,
+  WebhookEndpoint,
+  MerchantMember,
 } from "@qodinger/knot-database";
 import { config } from "dotenv";
 
@@ -145,26 +148,106 @@ export async function createDatabaseIndexes() {
     // ============================================
     console.log("\n🏪 Creating Merchant indexes...");
 
-    // Compound index for API key authentication
-    await Merchant.collection.createIndex({
-      apiKeyHash: 1,
-      isActive: 1,
-    });
-    console.log("  ✅ { apiKeyHash: 1, isActive: 1 }");
-
-    // Compound index for OAuth authentication
+    // Compound index for OAuth authentication with soft-delete check
     await Merchant.collection.createIndex({
       oauthId: 1,
       isActive: 1,
+      isDeleted: 1,
     });
-    console.log("  ✅ { oauthId: 1, isActive: 1 }");
+    console.log("  ✅ { oauthId: 1, isActive: 1, isDeleted: 1 }");
 
-    // Compound index for user lookup
+    // Compound index for user lookup with soft-delete check
     await Merchant.collection.createIndex({
       userId: 1,
       isActive: 1,
+      isDeleted: 1,
     });
-    console.log("  ✅ { userId: 1, isActive: 1 }");
+    console.log("  ✅ { userId: 1, isActive: 1, isDeleted: 1 }");
+
+    // Index for merchantId lookup
+    await Merchant.collection.createIndex({ merchantId: 1 }, { unique: true });
+    console.log("  ✅ { merchantId: 1 }");
+
+    // Index for soft-deleted merchants (cleanup jobs)
+    await Merchant.collection.createIndex({ isDeleted: 1, deletedAt: 1 });
+    console.log("  ✅ { isDeleted: 1, deletedAt: 1 }");
+
+    // ============================================
+    // ApiKey Indexes
+    // ============================================
+    console.log("\n🔑 Creating ApiKey indexes...");
+
+    // Index for API key authentication
+    await ApiKey.collection.createIndex({ keyHash: 1, isActive: 1 });
+    console.log("  ✅ { keyHash: 1, isActive: 1 }");
+
+    // Compound index for listing keys by merchant
+    await ApiKey.collection.createIndex({
+      merchantId: 1,
+      isActive: 1,
+      createdAt: -1,
+    });
+    console.log("  ✅ { merchantId: 1, isActive: 1, createdAt: -1 }");
+
+    // Index for keyId lookup
+    await ApiKey.collection.createIndex({ keyId: 1 }, { unique: true });
+    console.log("  ✅ { keyId: 1 }");
+
+    // ============================================
+    // WebhookEndpoint Indexes
+    // ============================================
+    console.log("\n🔔 Creating WebhookEndpoint indexes...");
+
+    // Compound index for active endpoints by merchant
+    await WebhookEndpoint.collection.createIndex({
+      merchantId: 1,
+      isActive: 1,
+    });
+    console.log("  ✅ { merchantId: 1, isActive: 1 }");
+
+    // Index for endpointId lookup
+    await WebhookEndpoint.collection.createIndex(
+      { endpointId: 1 },
+      { unique: true },
+    );
+    console.log("  ✅ { endpointId: 1 }");
+
+    // Index for disabled endpoints (cleanup/recovery jobs)
+    await WebhookEndpoint.collection.createIndex({
+      isActive: 1,
+      disabledAt: 1,
+    });
+    console.log("  ✅ { isActive: 1, disabledAt: 1 }");
+
+    // ============================================
+    // MerchantMember Indexes
+    // ============================================
+    console.log("\n👥 Creating MerchantMember indexes...");
+
+    // Compound index for membership lookup
+    await MerchantMember.collection.createIndex(
+      { merchantId: 1, userId: 1 },
+      { unique: true },
+    );
+    console.log("  ✅ { merchantId: 1, userId: 1 }");
+
+    // Index for listing members by merchant
+    await MerchantMember.collection.createIndex({ merchantId: 1, role: 1 });
+    console.log("  ✅ { merchantId: 1, role: 1 }");
+
+    // Index for invite token lookup
+    await MerchantMember.collection.createIndex(
+      { inviteToken: 1 },
+      { sparse: true },
+    );
+    console.log("  ✅ { inviteToken: 1 }");
+
+    // Index for expired invite cleanup
+    await MerchantMember.collection.createIndex(
+      { inviteExpiresAt: 1 },
+      { partialFilterExpression: { accepted: false } },
+    );
+    console.log("  ✅ { inviteExpiresAt: 1 } (partial: accepted=false)");
 
     // ============================================
     // User Indexes
@@ -211,6 +294,9 @@ export async function createDatabaseIndexes() {
       { name: "notifications", model: Notification },
       { name: "merchants", model: Merchant },
       { name: "users", model: User },
+      { name: "apikeys", model: ApiKey },
+      { name: "webhookendpoints", model: WebhookEndpoint },
+      { name: "merchantmembers", model: MerchantMember },
     ];
 
     for (const collection of collections) {

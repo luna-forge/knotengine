@@ -275,3 +275,6 @@ export const inputValidators = {
   sanitizeUrl: (input: string) =>
     limitLength(stripHtmlTags(input), MAX_URL_LENGTH),
 };
+
+export { PLAN_LIMITS, getPlanLimits, checkPlanLimit } from "./src/plan-limits";
+export type { PlanLimits } from "./src/plan-limits";

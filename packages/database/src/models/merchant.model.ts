@@ -76,6 +76,19 @@ export interface IMerchant extends Document {
     securityAlerts: boolean;
   };
   isActive: boolean;
+  /** Suspension tracking */
+  suspendedAt?: Date;
+  suspendedReason?:
+    | "payment_failed"
+    | "policy_violation"
+    | "fraud"
+    | "manual"
+    | "other";
+  suspendedBy?: mongoose.Types.ObjectId;
+  /** Soft delete for compliance */
+  isDeleted: boolean;
+  deletedAt?: Date;
+  deletedBy?: mongoose.Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -183,6 +196,15 @@ const MerchantSchema: Schema = new Schema(
       },
     },
     isActive: { type: Boolean, default: true },
+    suspendedAt: { type: Date },
+    suspendedReason: {
+      type: String,
+      enum: ["payment_failed", "policy_violation", "fraud", "manual", "other"],
+    },
+    suspendedBy: { type: Schema.Types.ObjectId, ref: "User" },
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date },
+    deletedBy: { type: Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true },
 );

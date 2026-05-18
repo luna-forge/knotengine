@@ -7,6 +7,8 @@ import mongoose, { Schema, Document } from "mongoose";
 
 export interface IAuditLog extends Document {
   userId: mongoose.Types.ObjectId;
+  /** Merchant this event relates to (optional for user-level events) */
+  merchantId?: mongoose.Types.ObjectId;
   action: string;
   category: "auth" | "account" | "security" | "billing" | "settings";
   description: string;
@@ -22,6 +24,11 @@ const AuditLogSchema: Schema = new Schema(
       type: Schema.Types.ObjectId,
       ref: "User",
       required: true,
+      index: true,
+    },
+    merchantId: {
+      type: Schema.Types.ObjectId,
+      ref: "Merchant",
       index: true,
     },
     action: { type: String, required: true },
@@ -41,7 +48,9 @@ const AuditLogSchema: Schema = new Schema(
 
 // Indexes for efficient querying
 AuditLogSchema.index({ userId: 1, createdAt: -1 });
+AuditLogSchema.index({ merchantId: 1, createdAt: -1 });
 AuditLogSchema.index({ category: 1, createdAt: -1 });
+AuditLogSchema.index({ userId: 1, merchantId: 1, createdAt: -1 });
 // 90-day Retention: MongoDB will auto-delete audit logs older than 90 days
 AuditLogSchema.index(
   { createdAt: 1 },
