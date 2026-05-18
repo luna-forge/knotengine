@@ -219,7 +219,8 @@ export const MerchantBillingController = {
 
     // Fill in zeros for missing periods to ensure smooth chart
     const chartData: { name: string; volume: number }[] = [];
-    const steps = period === "24h" ? 24 : period === "90d" ? 90 : period === "30d" ? 30 : 7;
+    const steps =
+      period === "24h" ? 24 : period === "90d" ? 90 : period === "30d" ? 30 : 7;
     const stepMs = period === "24h" ? 3600000 : 86400000;
 
     for (let i = 0; i < steps; i++) {

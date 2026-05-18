@@ -147,4 +147,26 @@ export async function authRoutes(app: FastifyInstance) {
     },
     AuthController.getUserAuditLogs,
   );
+
+  // ──────────────────────────────────────────────
+  // POST /v1/auth/link-oauth — Link OAuth to Email Account
+  // ──────────────────────────────────────────────
+  server.post(
+    "/v1/auth/link-oauth",
+    {
+      schema: {
+        body: z.object({
+          email: z
+            .string()
+            .email("Invalid email format")
+            .max(MAX_EMAIL_LENGTH)
+            .transform(sanitizeEmailInput)
+            .refine(isValidEmail, { message: "Invalid email format" }),
+          provider: z.enum(["google", "github"]),
+          providerId: z.string().min(1).max(255),
+        }),
+      },
+    },
+    AuthController.linkOAuthProvider,
+  );
 }

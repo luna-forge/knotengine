@@ -3,6 +3,7 @@ import {
   IInvoice,
   Merchant,
   WebhookDelivery,
+  WebhookEndpoint,
 } from "@qodinger/knot-database";
 import { Derivator } from "@qodinger/knot-crypto";
 import * as crypto from "crypto";
@@ -12,17 +13,20 @@ import { WebhookQueue } from "./webhook-queue.js";
 /**
  * 📡 WebhookDispatcher
  *
- * Delivers payment status updates to merchant webhook URLs.
+ * Delivers payment status updates to merchant webhook endpoints.
+ * Supports multiple endpoints per merchant with event filtering.
  * Features:
  *   - HMAC-SHA256 signed payloads
  *   - Retry tracking (up to 5 attempts)
  *   - Idempotency via invoice state checks
  *   - Queue-based delivery (BullMQ) for scale
+ *   - Auto-disables endpoints after 10 consecutive failures
  */
 export class WebhookDispatcher {
   /** Max retries: ~24 hours of total retry time with exponential backoff */
   private static MAX_ATTEMPTS = 10;
   private static INITIAL_BACKOFF_MINUTES = 2;
+  private static MAX_CONSECUTIVE_FAILURES = 10;
 
   /**
    * Dispatches a webhook notification to the merchant for an invoice event.
@@ -33,29 +37,25 @@ export class WebhookDispatcher {
     invoiceId: string,
     event: string,
   ): Promise<boolean> {
-    // Get invoice to determine merchant plan
     const invoice = await Invoice.findOne({ invoiceId });
     if (!invoice) {
       console.error(`WebhookDispatcher: Invoice ${invoiceId} not found`);
       return false;
     }
 
-    // Get merchant plan
     const merchant = await Merchant.findById(invoice.merchantId);
     const merchantPlan = merchant?.plan || "starter";
 
-    // Use queue if available for better scalability
     if (WebhookQueue.isReady()) {
       await WebhookQueue.dispatch(invoiceId, event, merchantPlan);
-      return true; // Job queued successfully
+      return true;
     }
 
-    // Fallback to synchronous delivery
     return this.dispatchSync(invoiceId, event);
   }
 
   /**
-   * Synchronous webhook delivery (fallback when queue unavailable).
+   * Synchronous webhook delivery to all matching endpoints.
    */
   public static async dispatchSync(
     invoiceId: string,
@@ -68,9 +68,6 @@ export class WebhookDispatcher {
       return false;
     }
 
-    // Check if webhook was already delivered for this status
-    // This provides idempotency at the dispatcher level
-    // Only skip for terminal events (confirmed, expired, failed)
     if (
       invoice.webhookDelivered &&
       ["invoice.confirmed", "invoice.expired", "invoice.failed"].includes(event)
@@ -82,26 +79,16 @@ export class WebhookDispatcher {
     }
 
     const merchant = await Merchant.findById(invoice.merchantId);
+    if (!merchant) return false;
 
-    if (!merchant?.webhookUrl) {
+    // Fetch all active webhook endpoints for this merchant
+    const endpoints = await WebhookEndpoint.find({
+      merchantId: merchant._id,
+      isActive: true,
+    });
+
+    if (endpoints.length === 0) {
       return false;
-    }
-
-    // Check if merchant is subscribed to this event
-    const subscribedEvents = merchant.webhookEvents || [
-      "invoice.confirmed",
-      "invoice.mempool_detected",
-      "invoice.partially_paid",
-      "invoice.overpaid",
-      "invoice.expired",
-      "invoice.failed",
-    ];
-
-    if (!subscribedEvents.includes(event)) {
-      console.log(
-        `📡 Webhook skipped. Merchant is not subscribed to '${event}'.`,
-      );
-      return true;
     }
 
     const payload = {
@@ -127,133 +114,179 @@ export class WebhookDispatcher {
     };
 
     const payloadString = JSON.stringify(payload);
-    const secret =
-      merchant.webhookSecret || process.env.WEBHOOK_SECRET || "default_secret";
-    const signature = Derivator.signWebhookPayload(payloadString, secret);
-    const startTime = Date.now();
+    let anySuccess = false;
 
-    try {
-      console.log(
-        `📡 Dispatching ${event} to ${merchant.webhookUrl} (Attempt ${invoice.webhookAttempts + 1})`,
-      );
+    for (const endpoint of endpoints) {
+      // Check if endpoint should receive this event
+      if (
+        endpoint.eventMode === "filtered" &&
+        !endpoint.events.includes(event)
+      ) {
+        continue;
+      }
 
-      const response = await fetch(merchant.webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-knot-signature": signature,
-          "x-knot-event": event,
-          "x-knot-invoice": invoice.invoiceId,
-          "User-Agent": "KnotEngine-Webhook-Dispatcher/1.0",
-        },
-        body: payloadString,
-        signal: AbortSignal.timeout(15000), // 15 second timeout
-      });
+      const secret = endpoint.secret;
+      const signature = Derivator.signWebhookPayload(payloadString, secret);
+      const startTime = Date.now();
 
-      const duration = Date.now() - startTime;
-      const attempt = (invoice.webhookAttempts || 0) + 1;
-      const responseBody = await response.text();
+      try {
+        console.log(
+          `📡 Dispatching ${event} to ${endpoint.url} (${endpoint.endpointId})`,
+        );
 
-      if (response.ok) {
-        const updateSet: Record<string, unknown> = {
-          webhook_attempts: attempt,
-          lastWebhookAttempt: new Date(),
-        };
-
-        if (event === "invoice.confirmed" || event === "invoice.failed") {
-          updateSet.webhookDelivered = true;
-        }
-
-        await Invoice.findByIdAndUpdate(invoice._id, {
-          $set: updateSet,
+        const response = await fetch(endpoint.url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-knot-signature": signature,
+            "x-knot-event": event,
+            "x-knot-invoice": invoice.invoiceId,
+            "x-knot-endpoint": endpoint.endpointId,
+            "User-Agent": "KnotEngine-Webhook-Dispatcher/2.0",
+          },
+          body: payloadString,
+          signal: AbortSignal.timeout(15000),
         });
 
-        // Log successful delivery
+        const duration = Date.now() - startTime;
+        const attempt = (invoice.webhookAttempts || 0) + 1;
+        const responseBody = await response.text();
+
+        if (response.ok) {
+          anySuccess = true;
+
+          await WebhookEndpoint.findByIdAndUpdate(endpoint._id, {
+            $set: { lastSuccessAt: new Date(), consecutiveFailures: 0 },
+          });
+
+          const updateSet: Record<string, unknown> = {
+            webhook_attempts: attempt,
+            lastWebhookAttempt: new Date(),
+          };
+
+          if (event === "invoice.confirmed" || event === "invoice.failed") {
+            updateSet.webhookDelivered = true;
+          }
+
+          await Invoice.findByIdAndUpdate(invoice._id, {
+            $set: updateSet,
+          });
+
+          await WebhookDelivery.create({
+            merchantId: invoice.merchantId.toString(),
+            invoiceId: invoice.invoiceId,
+            eventType: event,
+            url: endpoint.url,
+            attempt,
+            status: "success",
+            statusCode: response.status,
+            responseBody: responseBody.substring(0, 1000),
+            duration,
+          });
+
+          console.log(
+            `✅ Webhook SUCCESS: ${invoiceId} ${event} delivered to ${endpoint.url}`,
+          );
+        } else {
+          throw new Error(`Endpoint returned ${response.status}`);
+        }
+      } catch (error: unknown) {
+        const attempts = (invoice.webhookAttempts || 0) + 1;
+        const duration = Date.now() - startTime;
+
+        await Invoice.findByIdAndUpdate(invoice._id, {
+          $set: {
+            webhook_attempts: attempts,
+            lastWebhookAttempt: new Date(),
+          },
+        });
+
+        const message = error instanceof Error ? error.message : String(error);
+        const statusCode =
+          error instanceof Error && "statusCode" in error
+            ? (error as { statusCode: number }).statusCode
+            : undefined;
+
+        const newFailures = endpoint.consecutiveFailures + 1;
+        const shouldDisable = newFailures >= this.MAX_CONSECUTIVE_FAILURES;
+
+        await WebhookEndpoint.findByIdAndUpdate(endpoint._id, {
+          $set: {
+            lastFailureAt: new Date(),
+            consecutiveFailures: newFailures,
+            ...(shouldDisable
+              ? { isActive: false, disabledAt: new Date() }
+              : {}),
+          },
+        });
+
         await WebhookDelivery.create({
           merchantId: invoice.merchantId.toString(),
           invoiceId: invoice.invoiceId,
           eventType: event,
-          url: merchant.webhookUrl,
-          attempt,
-          status: "success",
-          statusCode: response.status,
-          responseBody: responseBody.substring(0, 1000),
+          url: endpoint.url,
+          attempt: attempts,
+          status: "failed",
+          statusCode,
+          errorMessage: message.substring(0, 500),
           duration,
         });
 
-        console.log(
-          `✅ Webhook SUCCESS: ${invoiceId} ${event} delivered to merchant.`,
+        console.error(
+          `❌ Webhook FAILURE (${attempts}/${this.MAX_ATTEMPTS}) for ${invoiceId} to ${endpoint.url}: ${message}`,
         );
-        return true;
-      } else {
-        throw new Error(`Merchant returned ${response.status}`);
+
+        if (endpoint.consecutiveFailures === 0) {
+          const isTestnet = invoice.metadata?.isTestnet === true;
+          NotificationService.create({
+            merchantId: invoice.merchantId.toString(),
+            title: isTestnet
+              ? "[TEST] Webhook Delivery Failed"
+              : "Webhook Delivery Failed",
+            description: `Failed to notify ${endpoint.url || "your webhook"} for invoice ${invoice.invoiceId}: ${message}`,
+            type: "error",
+            link: "/dashboard/developers",
+            meta: {
+              invoiceId: invoice.invoiceId,
+              error: message,
+              isTestnet,
+              endpointId: endpoint.endpointId,
+            },
+          });
+        }
       }
-    } catch (error: unknown) {
-      const attempts = (invoice.webhookAttempts || 0) + 1;
-      const duration = Date.now() - startTime;
-
-      // Update attempts in DB regardless of failure
-      await Invoice.findByIdAndUpdate(invoice._id, {
-        $set: {
-          webhook_attempts: attempts,
-          lastWebhookAttempt: new Date(),
-        },
-      });
-
-      const message = error instanceof Error ? error.message : String(error);
-      const statusCode =
-        error instanceof Error && "statusCode" in error
-          ? (error as { statusCode: number }).statusCode
-          : undefined;
-
-      // Log failed delivery
-      await WebhookDelivery.create({
-        merchantId: invoice.merchantId.toString(),
-        invoiceId: invoice.invoiceId,
-        eventType: event,
-        url: merchant.webhookUrl,
-        attempt: attempts,
-        status: "failed",
-        statusCode,
-        errorMessage: message.substring(0, 500),
-        duration,
-      });
-
-      console.error(
-        `❌ Webhook FAILURE (${attempts}/${this.MAX_ATTEMPTS}) for ${invoiceId}: ${message}`,
-      );
-
-      // Notify Merchant only on the first failure to avoid spamming 10+ identical alerts
-      const isTestnet = invoice.metadata?.isTestnet === true;
-      if (attempts === 1) {
-        NotificationService.create({
-          merchantId: invoice.merchantId.toString(),
-          title: isTestnet
-            ? "[TEST] Webhook Delivery Failed"
-            : "Webhook Delivery Failed",
-          description: `Failed to notify your server for invoice ${invoice.invoiceId}: ${message}`,
-          type: "error",
-          link: "/dashboard/webhooks",
-          meta: { invoiceId: invoice.invoiceId, error: message, isTestnet },
-        });
-      }
-
-      // We don't use setTimeout here anymore for production reliability.
-      // Instead, we rely on the background 'dispatchPending' job to pick it up
-      // based on the 'lastWebhookAttempt' and 'webhookAttempts' count.
-
-      return false;
     }
+
+    return anySuccess;
   }
 
   /**
-   * Dispatches a test webhook notification to the merchant with dummy data.
+   * Dispatches a test webhook to a specific endpoint.
    */
-  public static async dispatchTest(merchantId: string): Promise<boolean> {
+  public static async dispatchTest(
+    merchantId: string,
+    endpointId?: string,
+  ): Promise<boolean> {
     const merchant = await Merchant.findById(merchantId);
+    if (!merchant) {
+      throw new Error("Merchant not found");
+    }
 
-    if (!merchant?.webhookUrl) {
-      throw new Error("No webhook URL configured");
+    let endpoint;
+    if (endpointId) {
+      endpoint = await WebhookEndpoint.findOne({
+        _id: endpointId,
+        merchantId: merchant._id,
+      });
+    } else {
+      endpoint = await WebhookEndpoint.findOne({
+        merchantId: merchant._id,
+        isActive: true,
+      }).sort({ createdAt: -1 });
+    }
+
+    if (!endpoint) {
+      throw new Error("No webhook endpoint configured");
     }
 
     const event = "invoice.confirmed";
@@ -280,29 +313,35 @@ export class WebhookDispatcher {
     };
 
     const payloadString = JSON.stringify(payload);
-    const secret =
-      merchant.webhookSecret || process.env.WEBHOOK_SECRET || "default_secret";
-    const signature = Derivator.signWebhookPayload(payloadString, secret);
+    const signature = Derivator.signWebhookPayload(
+      payloadString,
+      endpoint.secret,
+    );
 
     try {
-      console.log(`📡 Dispatching TEST webhook to ${merchant.webhookUrl}`);
+      console.log(`📡 Dispatching TEST webhook to ${endpoint.url}`);
 
-      const response = await fetch(merchant.webhookUrl, {
+      const response = await fetch(endpoint.url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-knot-signature": signature,
           "x-knot-event": event,
           "x-knot-invoice": payload.invoice_id,
-          "User-Agent": "KnotEngine-Webhook-Dispatcher/1.0",
+          "x-knot-endpoint": endpoint.endpointId,
+          "User-Agent": "KnotEngine-Webhook-Dispatcher/2.0",
         },
         body: payloadString,
-        signal: AbortSignal.timeout(10000), // 10 second timeout for tests
+        signal: AbortSignal.timeout(10000),
       });
 
       if (!response.ok) {
-        throw new Error(`Merchant returned ${response.status}`);
+        throw new Error(`Endpoint returned ${response.status}`);
       }
+
+      await WebhookEndpoint.findByIdAndUpdate(endpoint._id, {
+        $set: { lastSuccessAt: new Date(), consecutiveFailures: 0 },
+      });
 
       console.log(`✅ TEST Webhook SUCCESS`);
       return true;
@@ -314,9 +353,7 @@ export class WebhookDispatcher {
   }
 
   /**
-   * Catch-up mechanism: finds all invoices that failed delivery and retries them
-   * using an exponential backoff strategy based on the last attempt time.
-   * Uses pagination to prevent memory spikes with large datasets.
+   * Catch-up mechanism: finds all invoices that failed delivery and retries them.
    */
   public static async dispatchPending(): Promise<number> {
     const BATCH_SIZE = 50;
@@ -326,7 +363,6 @@ export class WebhookDispatcher {
     let hasMore = true;
 
     while (hasMore) {
-      // Find missing deliveries with pagination
       const candidates = await Invoice.find({
         webhookDelivered: false,
         webhookAttempts: { $lt: this.MAX_ATTEMPTS },
@@ -334,7 +370,7 @@ export class WebhookDispatcher {
       })
         .limit(BATCH_SIZE)
         .skip(skip)
-        .sort({ lastWebhookAttempt: 1 }); // Process oldest attempts first
+        .sort({ lastWebhookAttempt: 1 });
 
       if (candidates.length === 0) {
         hasMore = false;
@@ -345,14 +381,12 @@ export class WebhookDispatcher {
         const attempts = invoice.webhookAttempts || 0;
 
         try {
-          // If never attempted, dispatch immediately
           if (attempts === 0) {
             await this.triggerInvoiceWebhook(invoice);
             dispatched++;
             continue;
           }
 
-          // Calculate next allowed retry time (Exponential: 2, 4, 8, 16... minutes)
           const lastAttempt = invoice.lastWebhookAttempt
             ? new Date(invoice.lastWebhookAttempt).getTime()
             : 0;
@@ -374,7 +408,6 @@ export class WebhookDispatcher {
 
       skip += BATCH_SIZE;
 
-      // If we got fewer than BATCH_SIZE, we're done
       if (candidates.length < BATCH_SIZE) {
         hasMore = false;
       }

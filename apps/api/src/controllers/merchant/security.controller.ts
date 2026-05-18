@@ -1,5 +1,5 @@
 import { FastifyReply } from "fastify";
-import { Merchant } from "@qodinger/knot-database";
+import { Merchant, ApiKey, WebhookEndpoint } from "@qodinger/knot-database";
 import { BIP32Factory } from "bip32";
 import * as bip39 from "bip39";
 import * as bitcoin from "bitcoinjs-lib";
@@ -51,10 +51,16 @@ export const MerchantSecurityController = {
     const merchant = request.merchant;
     if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
-    if (merchant.apiKeyHash) {
-      return reply
-        .code(400)
-        .send({ error: "API key already exists. Use rotate instead." });
+    const existingKeys = await ApiKey.countDocuments({
+      merchantId: merchant._id,
+      isActive: true,
+    });
+
+    if (existingKeys > 0) {
+      return reply.code(400).send({
+        error:
+          "API keys already exist. Use the Developers page to manage keys.",
+      });
     }
 
     const newApiKey = `knot_sk_${crypto.randomBytes(24).toString("hex")}`;
@@ -62,9 +68,16 @@ export const MerchantSecurityController = {
       .createHash("sha256")
       .update(newApiKey)
       .digest("hex");
+    const keyId = `key_${crypto.randomBytes(8).toString("hex")}`;
 
-    await Merchant.findByIdAndUpdate(merchant._id, {
-      $set: { apiKeyHash: newApiKeyHash },
+    await ApiKey.create({
+      merchantId: merchant._id,
+      keyId,
+      keyHash: newApiKeyHash,
+      label: "Default Key",
+      scope: "full_access",
+      lastFour: newApiKey.slice(-4),
+      isActive: true,
     });
 
     console.info(`🔑 API Key generated for merchant: ${merchant._id}`);
@@ -78,28 +91,34 @@ export const MerchantSecurityController = {
     const merchant = request.merchant;
     if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
-    // Generate new key
     const newApiKey = `knot_sk_${crypto.randomBytes(24).toString("hex")}`;
     const newApiKeyHash = crypto
       .createHash("sha256")
       .update(newApiKey)
       .digest("hex");
+    const keyId = `key_${crypto.randomBytes(8).toString("hex")}`;
 
-    await Merchant.findByIdAndUpdate(merchant._id, {
-      $set: { apiKeyHash: newApiKeyHash },
+    await ApiKey.create({
+      merchantId: merchant._id,
+      keyId,
+      keyHash: newApiKeyHash,
+      label: "Rotated Key",
+      scope: "full_access",
+      lastFour: newApiKey.slice(-4),
+      isActive: true,
     });
 
     console.warn(`⚠️ API Key rotated for merchant: ${merchant._id}`);
 
-    // Audit log key rotation
     await AuditLogger.security(
       merchant.userId?.toString() || merchant._id.toString(),
-      "api_key_generated", // We use generated as the action for rotation too
+      "api_key_generated",
       request,
     );
 
     return reply.code(200).send({
-      message: "API Key rotated successfully. Old key is now invalid.",
+      message:
+        "API Key rotated successfully. Old keys remain active until revoked.",
       apiKey: newApiKey,
     });
   },
@@ -107,20 +126,31 @@ export const MerchantSecurityController = {
     const merchant = request.merchant;
     if (!merchant) return reply.code(401).send({ error: "Unauthorized" });
 
-    // Generate new secret
-    const newWebhookSecret = `knot_wh_${crypto
-      .randomBytes(24)
-      .toString("hex")}`;
-
-    await Merchant.findByIdAndUpdate(merchant._id, {
-      $set: { webhookSecret: newWebhookSecret },
+    const endpoints = await WebhookEndpoint.find({
+      merchantId: merchant._id,
+      isActive: true,
     });
 
-    console.warn(`⚠️ Webhook Secret rotated for merchant: ${merchant._id}`);
+    if (endpoints.length === 0) {
+      return reply.code(400).send({
+        error: "No webhook endpoints configured. Create one first.",
+      });
+    }
+
+    const rotated = [];
+    for (const endpoint of endpoints) {
+      const newSecret = `knot_wh_${crypto.randomBytes(24).toString("hex")}`;
+      endpoint.secret = newSecret;
+      await endpoint.save();
+      rotated.push({ endpointId: endpoint.endpointId, secret: newSecret });
+    }
+
+    console.warn(`⚠️ Webhook secrets rotated for merchant: ${merchant._id}`);
 
     return reply.code(200).send({
-      message: "Webhook Secret rotated successfully.",
-      webhookSecret: newWebhookSecret,
+      message: "Webhook secrets rotated successfully.",
+      endpoints: rotated,
+      warning: "Update your webhook verification code with the new secrets.",
     });
   },
   generateTestnetWallet: async (request: any, _reply: FastifyReply) => {

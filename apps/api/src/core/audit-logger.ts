@@ -10,6 +10,7 @@ export type AuditCategory =
 
 export interface AuditLogData {
   userId: string;
+  merchantId?: string;
   action: string;
   category: AuditCategory;
   description: string;
@@ -30,6 +31,7 @@ export const AuditLogger = {
     try {
       await AuditLog.create({
         userId: data.userId,
+        merchantId: data.merchantId,
         action: data.action,
         category: data.category,
         description: data.description,
@@ -86,7 +88,13 @@ export const AuditLogger = {
       | "updated"
       | "deleted"
       | "merchant_created"
-      | "merchant_deleted",
+      | "merchant_deleted"
+      | "member_invited"
+      | "member_removed"
+      | "role_updated"
+      | "ownership_transferred"
+      | "invite_accepted"
+      | "member_left",
     request?: FastifyRequest,
     metadata?: Record<string, unknown>,
   ): Promise<void> {
@@ -96,10 +104,17 @@ export const AuditLogger = {
       deleted: "User account deleted",
       merchant_created: "Merchant account created",
       merchant_deleted: "Merchant account deleted",
+      member_invited: "Team member invited",
+      member_removed: "Team member removed",
+      role_updated: "Team member role updated",
+      ownership_transferred: "Merchant ownership transferred",
+      invite_accepted: "Team invite accepted",
+      member_left: "Member left merchant",
     };
 
     await this.log({
       userId,
+      merchantId: (metadata as any)?.merchantId,
       action,
       category: "account",
       description: descriptions[action],
@@ -137,6 +152,7 @@ export const AuditLogger = {
 
     await this.log({
       userId,
+      merchantId: (metadata as any)?.merchantId,
       action,
       category: "security",
       description: descriptions[action],
@@ -170,6 +186,7 @@ export const AuditLogger = {
 
     await this.log({
       userId,
+      merchantId: (metadata as any)?.merchantId,
       action,
       category: "billing",
       description: descriptions[action],
@@ -201,6 +218,7 @@ export const AuditLogger = {
 
     await this.log({
       userId,
+      merchantId: (metadata as any)?.merchantId,
       action,
       category: "settings",
       description: descriptions[action],
@@ -224,6 +242,41 @@ export const AuditLogger = {
     },
   ): Promise<import("@qodinger/knot-database").IAuditLog[]> {
     const query: Record<string, unknown> = { userId };
+
+    if (options?.category) {
+      query.category = options.category;
+    }
+
+    if (options?.startDate || options?.endDate) {
+      query.createdAt = {};
+      if (options?.startDate) {
+        (query.createdAt as Record<string, Date>).$gte = options.startDate;
+      }
+      if (options?.endDate) {
+        (query.createdAt as Record<string, Date>).$lte = options.endDate;
+      }
+    }
+
+    return AuditLog.find(query)
+      .sort({ createdAt: -1 })
+      .limit(options?.limit || 50)
+      .skip(options?.offset || 0);
+  },
+
+  /**
+   * Get audit logs for a merchant
+   */
+  async getMerchantLogs(
+    merchantId: string,
+    options?: {
+      limit?: number;
+      offset?: number;
+      category?: AuditCategory;
+      startDate?: Date;
+      endDate?: Date;
+    },
+  ): Promise<import("@qodinger/knot-database").IAuditLog[]> {
+    const query: Record<string, unknown> = { merchantId };
 
     if (options?.category) {
       query.category = options.category;
