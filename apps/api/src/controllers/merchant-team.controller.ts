@@ -1,6 +1,6 @@
 import { FastifyReply, FastifyRequest } from "fastify";
 import { Merchant, MerchantMember, User } from "@qodinger/knot-database";
-import mongoose from "mongoose";
+import { Types } from "mongoose";
 import * as crypto from "crypto";
 import { AuditLogger } from "../core/audit-logger.js";
 import { escapeRegExp } from "../middleware/auth.middleware.js";
@@ -65,9 +65,7 @@ async function resolveAuth(
   return { user, merchant, membership };
 }
 
-async function countOwners(
-  merchantMongoId: mongoose.Types.ObjectId,
-): Promise<number> {
+async function countOwners(merchantMongoId: Types.ObjectId): Promise<number> {
   return MerchantMember.countDocuments({
     merchantId: merchantMongoId,
     role: "owner",
@@ -380,7 +378,7 @@ export const MerchantTeamController = {
       return reply.code(400).send({ error: "Cannot transfer to yourself" });
     }
 
-    const session = await mongoose.startSession();
+    const session = await Merchant.startSession();
     session.startTransaction();
 
     try {
