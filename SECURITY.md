@@ -17,8 +17,8 @@ If you discover a security vulnerability in KnotEngine, please report it to us r
 
 ### How to Report
 
-1.  **Draft Pull Request:** Create a **Draft Pull Request** with the title `[Security] <Vulnerability Title>`. This allows maintainers to see the fix privately before it is published.
-2.  **Contact Maintainers:** If a PR is not possible, please reach out to the repository maintainers directly via GitHub.
+1.  **Private GitHub Issue:** Open a new issue with the label `security`. This keeps the discussion private between you and the maintainers.
+2.  **Draft Pull Request:** If you have a fix ready, open a Draft PR with the title `[Security] <Title>`. Draft PRs are not publicly visible until you publish them.
 
 ### What to Expect
 
