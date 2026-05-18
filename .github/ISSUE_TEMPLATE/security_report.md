@@ -6,7 +6,7 @@ labels: security
 assignees: ""
 ---
 
-⚠️ **Before opening a Security issue, please read our [SECURITY.md](../../SECURITY.md) policy.**
+⚠️ **For security vulnerabilities, please use the [Security tab](../security/advisories/new) instead of opening a public issue.**
 
 If your issue is **not security-related**, use the [Bug Report template](../bug_report.md) instead.
 
