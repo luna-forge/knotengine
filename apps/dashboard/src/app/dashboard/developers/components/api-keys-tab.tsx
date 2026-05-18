@@ -9,19 +9,17 @@ import {
   Terminal,
   ExternalLink,
   Key,
+  Plus,
+  Shield,
+  Clock,
 } from "lucide-react";
 import { cn, dedent } from "@/lib/utils";
 import { CodeBlock } from "@/components/ui/code-block";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -47,127 +45,182 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useApiKeys } from "../hooks/use-api-keys";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050";
 
+const SCOPE_LABELS: Record<string, string> = {
+  full_access: "Full Access",
+  read_only: "Read Only",
+  invoices: "Invoices Only",
+  webhooks: "Webhooks Only",
+};
+
 export function ApiKeysTab() {
   const {
-    session,
+    keys,
+    loading,
     copied,
-    rotating,
-    isRotateDialogOpen,
-    setIsRotateDialogOpen,
+    creating,
+    revoking,
+    isCreateDialogOpen,
+    setIsCreateDialogOpen,
+    isRevokeDialogOpen,
+    setIsRevokeDialogOpen,
+    revokeTarget,
+    setRevokeTarget,
     newKey,
     setNewKey,
+    newKeyLabel,
+    setNewKeyLabel,
+    newKeyScope,
+    setNewKeyScope,
     selectedIntegrationLanguage,
     setSelectedIntegrationLanguage,
     copyToClipboard,
-    handleRotateKey,
+    handleCreateKey,
+    handleRevokeKey,
   } = useApiKeys();
+
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return "Never";
+    return new Date(dateStr).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  };
 
   return (
     <div className="space-y-6">
-      <Card className="border shadow-sm">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm font-semibold">Standard keys</CardTitle>
-          <CardDescription className="text-xs">
-            These keys authenticate API requests. Secret keys are only visible
-            once upon creation.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="px-6 pt-0">
-          <div className="border-border/40 overflow-hidden rounded-lg border shadow-sm">
-            <Table>
-              <TableHeader className="bg-muted/20">
-                <TableRow className="border-border/30 h-12 hover:bg-transparent">
-                  <TableHead className="w-40 pl-6 text-[10px] font-bold tracking-wider uppercase">
-                    Name
-                  </TableHead>
-                  <TableHead className="text-[10px] font-bold tracking-wider uppercase">
-                    Token
-                  </TableHead>
-                  <TableHead className="text-[10px] font-bold tracking-wider uppercase">
-                    Status
-                  </TableHead>
-                  <TableHead className="pr-6 text-right text-[10px] font-bold tracking-wider uppercase">
-                    Actions
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow className="group">
-                  <TableCell className="pl-6 text-sm font-medium">
-                    <div className="flex items-center gap-2">
-                      <Key className="text-muted-foreground size-3.5" />
-                      Secret key
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground font-mono text-sm tracking-wider">
-                    <div className="flex items-center gap-2">
-                      <span>
-                        {session?.user?.apiKey
-                          ? `knot_sk_...${session.user.apiKey.slice(-4)}`
-                          : "knot_sk_********************"}
-                      </span>
-                      <Badge
-                        variant="outline"
-                        className="h-4 px-1 text-[9px] font-bold tracking-wide uppercase"
-                      >
-                        Live
-                      </Badge>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-500">
-                      <span className="size-1.5 rounded-full bg-emerald-500" />
-                      Active
-                    </span>
-                  </TableCell>
-                  <TableCell className="pr-6 text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-44">
-                        <DropdownMenuLabel className="text-xs">
-                          Actions
-                        </DropdownMenuLabel>
-                        {session?.user?.apiKey && (
-                          <DropdownMenuItem
-                            className="text-xs"
-                            onClick={() =>
-                              copyToClipboard(
-                                session.user.apiKey as string,
-                                "sk",
-                              )
-                            }
-                          >
-                            <Copy className="mr-2 h-3.5 w-3.5" />
-                            Copy key
-                          </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem
-                          className="text-xs"
-                          onClick={() => setIsRotateDialogOpen(true)}
-                        >
-                          <RefreshCw className="mr-2 h-3.5 w-3.5" />
-                          Roll key...
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive focus:text-destructive text-xs">
-                          <AlertTriangle className="mr-2 h-3.5 w-3.5" />
-                          Revoke key
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">API Keys</h3>
+          <p className="text-muted-foreground text-sm">
+            Manage API keys for authentication.
+          </p>
+        </div>
+        <Button onClick={() => setIsCreateDialogOpen(true)}>
+          <Plus className="mr-2 size-4" />
+          Create Key
+        </Button>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          {loading ? (
+            <div className="text-muted-foreground py-8 text-center">
+              Loading keys...
+            </div>
+          ) : keys.length === 0 ? (
+            <div className="text-muted-foreground py-8 text-center">
+              No API keys yet. Create one to get started.
+            </div>
+          ) : (
+            <div className="border-border/40 overflow-hidden rounded-lg border shadow-sm">
+              <Table>
+                <TableHeader className="bg-muted/20">
+                  <TableRow className="border-border/30 h-12 hover:bg-transparent">
+                    <TableHead className="pl-6 text-[10px] font-bold tracking-wider uppercase">
+                      Name
+                    </TableHead>
+                    <TableHead className="text-[10px] font-bold tracking-wider uppercase">
+                      Scope
+                    </TableHead>
+                    <TableHead className="text-[10px] font-bold tracking-wider uppercase">
+                      Last Used
+                    </TableHead>
+                    <TableHead className="text-[10px] font-bold tracking-wider uppercase">
+                      Requests
+                    </TableHead>
+                    <TableHead className="pr-6 text-right text-[10px] font-bold tracking-wider uppercase">
+                      Actions
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {keys.map((key) => (
+                    <TableRow key={key.id} className="group">
+                      <TableCell className="pl-6 text-sm font-medium">
+                        <div className="flex items-center gap-2">
+                          <Key className="text-muted-foreground size-3.5" />
+                          <div>
+                            <div>{key.label}</div>
+                            <div className="text-muted-foreground font-mono text-xs">
+                              ...{key.lastFour}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-xs capitalize">
+                          <Shield className="mr-1 size-3" />
+                          {SCOPE_LABELS[key.scope] || key.scope}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-muted-foreground text-xs">
+                          <Clock className="mr-1 inline size-3" />
+                          {formatDate(key.lastUsedAt)}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-sm">
+                        {key.requestCount.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="pr-6 text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                            >
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-44">
+                            <DropdownMenuLabel className="text-xs">
+                              Actions
+                            </DropdownMenuLabel>
+                            <DropdownMenuItem
+                              className="text-xs"
+                              onClick={() =>
+                                copyToClipboard(
+                                  `knot_sk_...${key.lastFour}`,
+                                  key.id,
+                                )
+                              }
+                            >
+                              <Copy className="mr-2 h-3.5 w-3.5" />
+                              Copy key ID
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className="text-destructive focus:text-destructive text-xs"
+                              onClick={() => {
+                                setRevokeTarget(key);
+                                setIsRevokeDialogOpen(true);
+                              }}
+                            >
+                              <AlertTriangle className="mr-2 h-3.5 w-3.5" />
+                              Revoke key
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -198,7 +251,7 @@ export function ApiKeysTab() {
                   </p>
                   <div className="flex pt-2 text-xs">
                     <a
-                      href="#"
+                      href="/docs"
                       className="inline-flex items-center gap-1.5 font-medium text-slate-300 transition-colors hover:text-white"
                     >
                       API Reference <ExternalLink className="size-3" />
@@ -270,34 +323,55 @@ export function ApiKeysTab() {
         </Card>
       </div>
 
-      <Dialog open={isRotateDialogOpen} onOpenChange={setIsRotateDialogOpen}>
+      {/* Create Key Dialog */}
+      <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Roll API Key</DialogTitle>
+            <DialogTitle>Create API Key</DialogTitle>
             <DialogDescription>
-              Are you sure? The current key will be invalidated immediately, and
-              any applications using it will stop working.
+              Give your key a descriptive name and choose its access level.
             </DialogDescription>
           </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Key Name (optional)</Label>
+              <Input
+                placeholder="e.g. Production Server"
+                value={newKeyLabel}
+                onChange={(e) => setNewKeyLabel(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Scope</Label>
+              <Select value={newKeyScope} onValueChange={setNewKeyScope}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full_access">Full Access</SelectItem>
+                  <SelectItem value="read_only">Read Only</SelectItem>
+                  <SelectItem value="invoices">Invoices Only</SelectItem>
+                  <SelectItem value="webhooks">Webhooks Only</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => setIsRotateDialogOpen(false)}
+              onClick={() => setIsCreateDialogOpen(false)}
             >
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRotateKey}
-              disabled={rotating}
-            >
-              {rotating && <RefreshCw className="mr-2 h-4 w-4 animate-spin" />}
-              Roll key
+            <Button onClick={handleCreateKey} disabled={creating}>
+              {creating ? "Creating..." : "Create Key"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
+      {/* New Key Display Dialog */}
       <Dialog open={!!newKey} onOpenChange={(open) => !open && setNewKey(null)}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -309,13 +383,15 @@ export function ApiKeysTab() {
           <div className="my-4 flex items-center space-x-2">
             <Input
               readOnly
-              value={newKey || ""}
+              value={newKey?.secretKey || ""}
               className="font-mono text-sm"
             />
             <Button
               size="icon"
               variant="secondary"
-              onClick={() => newKey && copyToClipboard(newKey, "newkey")}
+              onClick={() =>
+                newKey && copyToClipboard(newKey.secretKey, "newkey")
+              }
             >
               {copied === "newkey" ? (
                 <Check className="h-4 w-4" />
@@ -338,6 +414,41 @@ export function ApiKeysTab() {
           <DialogFooter>
             <Button type="button" onClick={() => setNewKey(null)}>
               Done
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Revoke Key Dialog */}
+      <Dialog open={isRevokeDialogOpen} onOpenChange={setIsRevokeDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="size-5 text-amber-500" />
+              Revoke API Key
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure? The key <strong>{revokeTarget?.label}</strong> will
+              be invalidated immediately. Any applications using it will stop
+              working.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setIsRevokeDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRevokeKey}
+              disabled={revoking === revokeTarget?.id}
+            >
+              {revoking === revokeTarget?.id && (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Revoke Key
             </Button>
           </DialogFooter>
         </DialogContent>
