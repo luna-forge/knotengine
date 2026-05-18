@@ -4,10 +4,16 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
     commit-message:
       prefix: "chore"
       include: "scope"
+    group:
+      dependency-name: "*"
+      update-types:
+        - "version-update:semver-major"
+        - "version-update:semver-minor"
+        - "version-update:semver-patch"
     ignore:
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
@@ -15,31 +21,43 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     commit-message:
       prefix: "ci"
       include: "scope"
+    group:
+      dependency-name: "*"
+      update-types:
+        - "version-update:semver-major"
+        - "version-update:semver-minor"
+        - "version-update:semver-patch"
 
   - package-ecosystem: "docker"
     directory: "/apps/api"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     commit-message:
       prefix: "chore"
       include: "scope"
+    group:
+      dependency-name: "*"
 
   - package-ecosystem: "docker"
     directory: "/apps/dashboard"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     commit-message:
       prefix: "chore"
       include: "scope"
+    group:
+      dependency-name: "*"
 
   - package-ecosystem: "docker"
     directory: "/apps/checkout"
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     commit-message:
       prefix: "chore"
       include: "scope"
+    group:
+      dependency-name: "*"
