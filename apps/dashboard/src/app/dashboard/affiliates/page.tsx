@@ -30,9 +30,7 @@ export default function AffiliatesPage() {
 
   const isLoading = status === "loading";
 
-  // @ts-expect-error - Custom affiliate fields in session
   const affiliateCode = session?.user?.referralCode;
-  // @ts-expect-error - Custom affiliate fields in session
   const affiliateEarningsUsd = session?.user?.referralEarningsUsd || 0;
 
   const affiliateLink = affiliateCode

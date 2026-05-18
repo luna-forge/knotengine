@@ -1,5 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
+import Google from "next-auth/providers/google";
+import GitHub from "next-auth/providers/github";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:5050";
 const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
@@ -7,6 +9,14 @@ const INTERNAL_SECRET = process.env.INTERNAL_SECRET;
 export const { handlers, signIn, signOut, auth } = NextAuth({
   trustHost: true,
   providers: [
+    Google({
+      clientId: process.env.AUTH_GOOGLE_ID!,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+    }),
+    GitHub({
+      clientId: process.env.AUTH_GITHUB_ID!,
+      clientSecret: process.env.AUTH_GITHUB_SECRET!,
+    }),
     Credentials({
       id: "magic-link",
       name: "Magic Link",
@@ -80,8 +90,37 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         let oauthId = token.oauthId as string;
 
         if (account?.provider === "magic-link") {
-          // @ts-expect-error - oauthId is custom field on user returned from authorize
-          oauthId = user.oauthId;
+          oauthId = (user as { oauthId: string }).oauthId;
+        } else if (
+          account?.provider === "google" ||
+          account?.provider === "github"
+        ) {
+          const userEmail = user.email;
+          if (userEmail) {
+            try {
+              const res = await fetch(`${API_BASE_URL}/v1/auth/link-oauth`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  email: userEmail,
+                  provider: account.provider,
+                  providerId: user.id as string,
+                }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                oauthId = data.oauthId;
+                console.log(`[Auth] Account linked: ${oauthId}`);
+              } else {
+                oauthId = `email:${userEmail}`;
+              }
+            } catch (e) {
+              console.error("[Auth] Failed to link OAuth account:", e);
+              oauthId = `email:${userEmail}`;
+            }
+          } else {
+            oauthId = `${account.provider}:${user.id}`;
+          }
         }
 
         if (oauthId) {
@@ -117,8 +156,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
           if (merchants.length > 0) {
             if (!token.merchantId) token.merchantId = merchants[0].id;
-            if (!token.publicMerchantId)
-              token.publicMerchantId = merchants[0].id;
 
             const activeMerchant =
               merchants.find(
@@ -164,7 +201,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           );
           if (isValid) {
             token.merchantId = session.merchantId;
-            token.publicMerchantId = session.merchantId; // id is already mid_...
           }
         } else {
           // No specific switch requested — check if current active merchant still exists
@@ -173,12 +209,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           );
           if (!currentStillExists && merchants.length > 0) {
             token.merchantId = merchants[0].id;
-            token.publicMerchantId = merchants[0].id;
-          } else if (currentStillExists) {
-            token.publicMerchantId = currentStillExists.id;
           } else if (merchants.length === 0) {
             token.merchantId = undefined;
-            token.publicMerchantId = undefined;
           }
         }
 
@@ -212,7 +244,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
       // 3. Proactive Refresh (If missing critical data but allowed)
       if (
-        !token.publicMerchantId &&
+        !token.merchantId &&
         !token.hasNoMerchants &&
         token.oauthId &&
         trigger !== "update"
@@ -228,7 +260,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             merchants[0];
 
           token.merchantId = activeMerchant.id;
-          token.publicMerchantId = activeMerchant.id; // id is always mid_... now
           token.referralCode = activeMerchant.referralCode;
           token.referralEarningsUsd = activeMerchant.referralEarningsUsd || 0;
           token.merchants = merchants.map(
@@ -256,20 +287,14 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
 
     /** Expose merchant data to the client session */
     async session({ session, token }) {
-      session.user.merchantId = token.merchantId as string; // mid_... public ID
-      // @ts-expect-error - Custom public ID field
-      session.user.publicMerchantId = token.merchantId as string; // same value now
+      session.user.merchantId = token.merchantId as string;
       session.user.oauthId = token.oauthId as string;
-      // @ts-expect-error - NextAuth session user type doesn't include merchants by default
-      session.user.merchants = token.merchants || [];
+      session.user.merchants =
+        (token.merchants as typeof session.user.merchants) || [];
       session.user.apiKey = token.apiKey as string;
-      // @ts-expect-error - 2FA fields
       session.user.twoFactorRequired = token.twoFactorRequired || false;
-      // @ts-expect-error - 2FA fields
       session.user.twoFactorVerified = token.twoFactorVerified || false;
-      // @ts-expect-error - Referral fields
       session.user.referralCode = token.referralCode as string;
-      // @ts-expect-error - Referral fields
       session.user.referralEarningsUsd = token.referralEarningsUsd as number;
       return session;
     },

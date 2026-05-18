@@ -16,7 +16,6 @@ export default auth((req) => {
   // ──────────────────────────────────────────────
   // Onboarding Logic
   // ──────────────────────────────────────────────
-  // @ts-expect-error - Next-auth types
   const merchants = req.auth.user?.merchants || [];
   const isOnboardingPage = pathname === "/dashboard/onboarding";
   const hasMerchants = merchants.length > 0;
@@ -35,9 +34,7 @@ export default auth((req) => {
   // Two-Factor Authentication Challenge
   // ──────────────────────────────────────────────
   const is2FAPage = pathname === "/dashboard/2fa";
-  // @ts-expect-error - 2FA fields
   const twoFactorRequired = req.auth.user?.twoFactorRequired || false;
-  // @ts-expect-error - 2FA fields
   const twoFactorVerified = req.auth.user?.twoFactorVerified || false;
 
   // 3. Merchant requires 2FA but hasn't verified yet -> Redirect to 2FA challenge

@@ -235,6 +235,25 @@ export class EmailService {
   }
 
   /**
+   * Send team member invitation email
+   */
+  static async sendTeamInvite(params: {
+    to: string;
+    merchantName: string;
+    inviteToken: string;
+    invitedBy: string;
+    role: string;
+    dashboardUrl: string;
+  }): Promise<{ success: boolean; error?: string }> {
+    return this.sendEmail({
+      to: params.to,
+      subject: `You're invited to join ${params.merchantName} on KnotEngine`,
+      html: EmailTemplates.getTeamInviteHtml(params),
+      logContext: "Team Invite",
+    });
+  }
+
+  /**
    * Test email connectivity
    */
   static async testConnection(): Promise<boolean> {

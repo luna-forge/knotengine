@@ -10,6 +10,18 @@ declare module "next-auth" {
       merchantId?: string;
       apiKey?: string;
       oauthId?: string;
+      merchants?: Array<{
+        id: string;
+        merchantId: string;
+        name?: string;
+        twoFactorEnabled?: boolean;
+        referralCode?: string;
+        referralEarningsUsd?: number;
+      }>;
+      twoFactorRequired?: boolean;
+      twoFactorVerified?: boolean;
+      referralCode?: string;
+      referralEarningsUsd?: number;
     };
   }
 }
@@ -19,5 +31,18 @@ declare module "next-auth/jwt" {
     merchantId?: string;
     apiKey?: string;
     oauthId?: string;
+    hasNoMerchants?: boolean;
+    merchants?: Array<{
+      id: string;
+      merchantId: string;
+      name?: string;
+      twoFactorEnabled?: boolean;
+      referralCode?: string;
+      referralEarningsUsd?: number;
+    }>;
+    twoFactorRequired?: boolean;
+    twoFactorVerified?: boolean;
+    referralCode?: string;
+    referralEarningsUsd?: number;
   }
 }

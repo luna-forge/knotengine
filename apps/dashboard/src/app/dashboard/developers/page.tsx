@@ -27,10 +27,8 @@ function DevelopersContent() {
   const [activeSection, setActiveSection] = useState(initialTab);
   const [copied, setCopied] = useState(false);
 
-  const user = session?.user as
-    | { publicMerchantId?: string; merchantId?: string }
-    | undefined;
-  const displayMerchantId = user?.publicMerchantId || user?.merchantId || "";
+  const user = session?.user as { merchantId?: string } | undefined;
+  const displayMerchantId = user?.merchantId || "";
 
   const copyMerchantId = () => {
     if (!displayMerchantId) return;

@@ -71,14 +71,12 @@ export const AuthController = {
     let user = await User.findOne({ oauthId });
 
     if (!user) {
-      // Create new user for this email with emailVerified = true
       user = await User.create({
         oauthId,
         email,
-        emailVerified: true, // Email verified via magic link
+        emailVerified: true,
         creditBalance: parseFloat(process.env.WELCOME_CREDIT_AMOUNT || "5.00"),
         welcomeBonusClaimed: true,
-        // Generate a referral code for them
         referralCode:
           "REF_" + crypto.randomBytes(4).toString("hex").toUpperCase(),
       });
@@ -245,6 +243,52 @@ export const AuthController = {
         offset,
         hasMore: offset + logs.length < total,
       },
+    };
+  },
+
+  linkOAuthProvider: async (
+    request: FastifyRequest<{
+      Body: { email: string; provider: string; providerId: string };
+    }>,
+    _reply: FastifyReply,
+  ) => {
+    const { email, provider, providerId } = request.body;
+
+    const emailOauthId = `email:${email}`;
+    const providerOauthId = `${provider}:${providerId}`;
+
+    let user = await User.findOne({ oauthId: emailOauthId });
+
+    if (!user) {
+      user = await User.findOne({ oauthId: providerOauthId });
+    }
+
+    if (!user) {
+      user = await User.create({
+        oauthId: emailOauthId,
+        email,
+        emailVerified: true,
+        creditBalance: parseFloat(process.env.WELCOME_CREDIT_AMOUNT || "5.00"),
+        welcomeBonusClaimed: true,
+        referralCode:
+          "REF_" + crypto.randomBytes(4).toString("hex").toUpperCase(),
+      });
+      request.server.log.info(`👤 New User created via OAuth: ${email}`);
+    } else if (user.oauthId === emailOauthId) {
+      request.server.log.info(
+        `🔗 Linked ${provider} to existing email account: ${email}`,
+      );
+    } else {
+      request.server.log.info(
+        `🔗 Using existing ${provider} account for: ${email}`,
+      );
+    }
+
+    return {
+      success: true,
+      oauthId: user.oauthId,
+      email: user.email,
+      emailVerified: user.emailVerified,
     };
   },
 };
