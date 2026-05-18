@@ -66,9 +66,9 @@ const MerchantMemberSchema: Schema = new Schema(
       enum: ["owner", "admin", "developer", "viewer", "billing"],
       default: "viewer",
     },
-    email: { type: String, sparse: true },
+    email: { type: String },
     accepted: { type: Boolean, default: false },
-    inviteToken: { type: String, sparse: true },
+    inviteToken: { type: String },
     inviteExpiresAt: { type: Date },
     invitedBy: { type: Schema.Types.ObjectId, ref: "User" },
     invitedAt: { type: Date, default: Date.now },
@@ -81,13 +81,6 @@ const MerchantMemberSchema: Schema = new Schema(
 // Indexes
 MerchantMemberSchema.index({ merchantId: 1, userId: 1 }, { unique: true });
 MerchantMemberSchema.index({ merchantId: 1, role: 1 });
-MerchantMemberSchema.index({ inviteToken: 1 }, { sparse: true });
-
-// Auto-delete expired invites after 7 days
-MerchantMemberSchema.index(
-  { inviteExpiresAt: 1 },
-  { expireAfterSeconds: 0, partialFilterExpression: { accepted: false } },
-);
 
 export const MerchantMember = mongoose.model<IMerchantMember>(
   "MerchantMember",

@@ -43,7 +43,7 @@ const WebhookEndpointSchema: Schema = new Schema(
       required: true,
       index: true,
     },
-    endpointId: { type: String, unique: true, sparse: true },
+    endpointId: { type: String },
     url: { type: String, required: true },
     secret: { type: String, required: true },
     events: { type: [String], default: [] },
@@ -62,9 +62,6 @@ const WebhookEndpointSchema: Schema = new Schema(
   },
   { timestamps: true },
 );
-
-WebhookEndpointSchema.index({ merchantId: 1, isActive: 1 });
-WebhookEndpointSchema.index({ endpointId: 1 }, { unique: true });
 
 export const WebhookEndpoint = mongoose.model<IWebhookEndpoint>(
   "WebhookEndpoint",

@@ -43,8 +43,8 @@ const ApiKeySchema: Schema = new Schema(
       required: true,
       index: true,
     },
-    keyId: { type: String, unique: true, sparse: true },
-    keyHash: { type: String, required: true, unique: true },
+    keyId: { type: String },
+    keyHash: { type: String, required: true },
     label: { type: String, required: true },
     scope: {
       type: String,
@@ -62,8 +62,5 @@ const ApiKeySchema: Schema = new Schema(
   },
   { timestamps: true },
 );
-
-ApiKeySchema.index({ merchantId: 1, isActive: 1 });
-ApiKeySchema.index({ keyHash: 1 }, { unique: true });
 
 export const ApiKey = mongoose.model<IApiKey>("ApiKey", ApiKeySchema);

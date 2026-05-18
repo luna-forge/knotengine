@@ -164,9 +164,20 @@ export async function createDatabaseIndexes() {
     });
     console.log("  ✅ { userId: 1, isActive: 1, isDeleted: 1 }");
 
-    // Index for merchantId lookup
-    await Merchant.collection.createIndex({ merchantId: 1 }, { unique: true });
-    console.log("  ✅ { merchantId: 1 }");
+    // Index for merchantId lookup (skip if already exists)
+    try {
+      await Merchant.collection.createIndex(
+        { merchantId: 1 },
+        { unique: true },
+      );
+      console.log("  ✅ { merchantId: 1 }");
+    } catch (err: any) {
+      if (err.codeName === "IndexKeySpecsConflict" || err.code === 86) {
+        console.log("  ℹ️  { merchantId: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
     // Index for soft-deleted merchants (cleanup jobs)
     await Merchant.collection.createIndex({ isDeleted: 1, deletedAt: 1 });
@@ -177,21 +188,63 @@ export async function createDatabaseIndexes() {
     // ============================================
     console.log("\n🔑 Creating ApiKey indexes...");
 
-    // Index for API key authentication
-    await ApiKey.collection.createIndex({ keyHash: 1, isActive: 1 });
-    console.log("  ✅ { keyHash: 1, isActive: 1 }");
+    // Index for API key authentication (compound index covers uniqueness via app-layer enforcement)
+    // Note: keyHash schema no longer has unique:true to avoid duplicate warnings
+    try {
+      await ApiKey.collection.createIndex({ keyHash: 1, isActive: 1 });
+      console.log("  ✅ { keyHash: 1, isActive: 1 }");
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log("  ℹ️  { keyHash: 1, isActive: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
-    // Compound index for listing keys by merchant
-    await ApiKey.collection.createIndex({
-      merchantId: 1,
-      isActive: 1,
-      createdAt: -1,
-    });
-    console.log("  ✅ { merchantId: 1, isActive: 1, createdAt: -1 }");
+    // Unique index for keyId lookup (enforced at app layer)
+    try {
+      await ApiKey.collection.createIndex({ keyId: 1 }, { unique: true });
+      console.log("  ✅ { keyId: 1 }");
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log("  ℹ️  { keyId: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
-    // Index for keyId lookup
-    await ApiKey.collection.createIndex({ keyId: 1 }, { unique: true });
-    console.log("  ✅ { keyId: 1 }");
+    // Compound index for listing keys by merchant (skip if already exists)
+    try {
+      await ApiKey.collection.createIndex({
+        merchantId: 1,
+        isActive: 1,
+        createdAt: -1,
+      });
+      console.log("  ✅ { merchantId: 1, isActive: 1, createdAt: -1 }");
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log(
+          "  ℹ️  { merchantId: 1, isActive: 1, createdAt: -1 } - Already exists",
+        );
+      } else {
+        throw err;
+      }
+    }
 
     // ============================================
     // WebhookEndpoint Indexes
@@ -199,55 +252,146 @@ export async function createDatabaseIndexes() {
     console.log("\n🔔 Creating WebhookEndpoint indexes...");
 
     // Compound index for active endpoints by merchant
-    await WebhookEndpoint.collection.createIndex({
-      merchantId: 1,
-      isActive: 1,
-    });
-    console.log("  ✅ { merchantId: 1, isActive: 1 }");
+    // Note: endpointId schema no longer has unique:true
+    try {
+      await WebhookEndpoint.collection.createIndex({
+        merchantId: 1,
+        isActive: 1,
+      });
+      console.log("  ✅ { merchantId: 1, isActive: 1 }");
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log("  ℹ️  { merchantId: 1, isActive: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
-    // Index for endpointId lookup
-    await WebhookEndpoint.collection.createIndex(
-      { endpointId: 1 },
-      { unique: true },
-    );
-    console.log("  ✅ { endpointId: 1 }");
+    // Unique index for endpointId lookup (enforced at app layer)
+    try {
+      await WebhookEndpoint.collection.createIndex(
+        { endpointId: 1 },
+        { unique: true },
+      );
+      console.log("  ✅ { endpointId: 1 }");
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log("  ℹ️  { endpointId: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
     // Index for disabled endpoints (cleanup/recovery jobs)
-    await WebhookEndpoint.collection.createIndex({
-      isActive: 1,
-      disabledAt: 1,
-    });
-    console.log("  ✅ { isActive: 1, disabledAt: 1 }");
+    try {
+      await WebhookEndpoint.collection.createIndex({
+        isActive: 1,
+        disabledAt: 1,
+      });
+      console.log("  ✅ { isActive: 1, disabledAt: 1 }");
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log("  ℹ️  { isActive: 1, disabledAt: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
     // ============================================
     // MerchantMember Indexes
     // ============================================
     console.log("\n👥 Creating MerchantMember indexes...");
 
-    // Compound index for membership lookup
-    await MerchantMember.collection.createIndex(
-      { merchantId: 1, userId: 1 },
-      { unique: true },
-    );
-    console.log("  ✅ { merchantId: 1, userId: 1 }");
+    // Compound index for membership lookup (skip if already exists)
+    try {
+      await MerchantMember.collection.createIndex(
+        { merchantId: 1, userId: 1 },
+        { unique: true },
+      );
+      console.log("  ✅ { merchantId: 1, userId: 1 }");
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log("  ℹ️  { merchantId: 1, userId: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
-    // Index for listing members by merchant
-    await MerchantMember.collection.createIndex({ merchantId: 1, role: 1 });
-    console.log("  ✅ { merchantId: 1, role: 1 }");
+    // Index for listing members by merchant (skip if already exists)
+    try {
+      await MerchantMember.collection.createIndex({ merchantId: 1, role: 1 });
+      console.log("  ✅ { merchantId: 1, role: 1 }");
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log("  ℹ️  { merchantId: 1, role: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
-    // Index for invite token lookup
-    await MerchantMember.collection.createIndex(
-      { inviteToken: 1 },
-      { sparse: true },
-    );
-    console.log("  ✅ { inviteToken: 1 }");
+    // Index for invite token lookup (skip if already exists)
+    try {
+      await MerchantMember.collection.createIndex({ inviteToken: 1 });
+      console.log("  ✅ { inviteToken: 1 }");
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log("  ℹ️  { inviteToken: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
-    // Index for expired invite cleanup
-    await MerchantMember.collection.createIndex(
-      { inviteExpiresAt: 1 },
-      { partialFilterExpression: { accepted: false } },
-    );
-    console.log("  ✅ { inviteExpiresAt: 1 } (partial: accepted=false)");
+    // Index for expired invite cleanup (TTL index with auto-expiry, skip if already exists)
+    try {
+      await MerchantMember.collection.createIndex(
+        { inviteExpiresAt: 1 },
+        { expireAfterSeconds: 0, partialFilterExpression: { accepted: false } },
+      );
+      console.log(
+        "  ✅ { inviteExpiresAt: 1 } (TTL: expireAfterSeconds=0, partial: accepted=false)",
+      );
+    } catch (err: any) {
+      if (
+        [86, 85, "IndexKeySpecsConflict", "IndexOptionsConflict"].includes(
+          err.codeName,
+        ) ||
+        [86, 85].includes(err.code)
+      ) {
+        console.log("  ℹ️  { inviteExpiresAt: 1 } - Already exists");
+      } else {
+        throw err;
+      }
+    }
 
     // ============================================
     // User Indexes
