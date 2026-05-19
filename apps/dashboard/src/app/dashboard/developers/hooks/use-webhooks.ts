@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { api } from "@/lib/api";
 
@@ -56,7 +56,7 @@ export function useWebhooks() {
   >("filtered");
   const [selectedLanguage, setSelectedLanguage] = useState("nodejs-sdk");
 
-  const fetchEndpoints = async () => {
+  const fetchEndpoints = useCallback(async () => {
     if (!merchantId) return;
     try {
       const res = await api.get(
@@ -68,11 +68,11 @@ export function useWebhooks() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [merchantId]);
 
   useEffect(() => {
     fetchEndpoints();
-  }, [merchantId]);
+  }, [fetchEndpoints]);
 
   const copyToClipboard = (text: string, id?: string) => {
     navigator.clipboard.writeText(text);

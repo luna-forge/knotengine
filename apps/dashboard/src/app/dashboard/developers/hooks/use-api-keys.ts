@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { api } from "@/lib/api";
 
@@ -36,7 +36,7 @@ export function useApiKeys() {
   const [selectedIntegrationLanguage, setSelectedIntegrationLanguage] =
     useState("nodejs");
 
-  const fetchKeys = async () => {
+  const fetchKeys = useCallback(async () => {
     if (!merchantId) return;
     try {
       const res = await api.get(`/v1/merchants/${merchantId}/keys`);
@@ -46,11 +46,11 @@ export function useApiKeys() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [merchantId]);
 
   useEffect(() => {
     fetchKeys();
-  }, [merchantId]);
+  }, [fetchKeys]);
 
   const copyToClipboard = (text: string, id?: string) => {
     navigator.clipboard.writeText(text);

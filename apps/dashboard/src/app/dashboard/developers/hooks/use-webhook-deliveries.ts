@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useSession } from "next-auth/react";
 
 export interface WebhookDelivery {
   _id: string;
@@ -28,7 +27,6 @@ export interface WebhookStats {
 }
 
 export function useWebhookDeliveries() {
-  const { data: session } = useSession();
   const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([]);
   const [stats, setStats] = useState<WebhookStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +59,7 @@ export function useWebhookDeliveries() {
     } finally {
       setLoading(false);
     }
-  }, [page, statusFilter, invoiceFilter, session]);
+  }, [page, statusFilter, invoiceFilter]);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -74,7 +72,7 @@ export function useWebhookDeliveries() {
     } catch (error) {
       console.error("Failed to fetch webhook stats:", error);
     }
-  }, [session]);
+  }, []);
 
   useEffect(() => {
     fetchDeliveries();

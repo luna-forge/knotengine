@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import {
   MoreHorizontal,
@@ -115,7 +115,7 @@ export default function TeamMembersPage() {
   );
   const isOwner = currentMember?.role === "owner";
 
-  const fetchMembers = async () => {
+  const fetchMembers = useCallback(async () => {
     if (!merchantId) return;
     try {
       const res = await fetch(`/api/v1/merchants/${merchantId}/team`);
@@ -128,11 +128,11 @@ export default function TeamMembersPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [merchantId]);
 
   useEffect(() => {
     fetchMembers();
-  }, [merchantId]);
+  }, [fetchMembers]);
 
   const handleInvite = async () => {
     if (!inviteEmail.trim() || !merchantId) return;
